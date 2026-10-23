@@ -1,10 +1,9 @@
 // frontend/src/App.jsx
-import { Routes, Route } from "react-router-dom";
-import Sidebar from "./Components/Sidebar.jsx";
-import Navbar from "./Components/Navbar.jsx";
-import FormulariosConsulta from "./Components/FormulariosConsulta.jsx";
-import VistaVacia from "./Components/VistaVacia.jsx";
-import "./App.css";
+import { Routes, Route, Navigate } from "react-router-dom";
+import Sidebar from "./Components/layout/Sidebar.jsx";
+import Navbar from "./Components/layout/Navbar.jsx";
+import IngresoSalida from "./pages/IngresoSalida.jsx";
+import VistaVacia from "./pages/VistasVacia.jsx";
 
 function App() {
   return (
@@ -13,11 +12,12 @@ function App() {
       <Navbar />
       <main className="App">
         <Routes>
-          <Route path="/ingreso/salida" element={<FormulariosConsulta />} />
+          <Route index element={<Navigate to="/ingreso/salida" replace />} />
+          <Route path="/ingreso/salida" element={<IngresoSalida />} />
+          {/* Secciones del menu que aun no tienen contenido */}
           <Route path="/dashboard" element={<VistaVacia />} />
           <Route path="/vehiculo" element={<VistaVacia />} />
           <Route path="/mensualidad" element={<VistaVacia />} />
-          <Route index element={<VistaVacia />} />
         </Routes>
       </main>
     </>

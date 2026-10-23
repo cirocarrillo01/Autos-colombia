@@ -1,14 +1,8 @@
 // frontend/src/validators/placa.js
-// ============================================================================
-// VALIDACIÓN DE PLACAS (espejo de backend/src/validators/placa.js)
-// ============================================================================
-// Formatos de placa soportados en Colombia:
-//   - Carro: 3 letras + 3 números         -> ABC123   (ABC-123)
-//   - Moto:  3 letras + 2 números + 1 letra -> ABC12C  (ABC-12C)
-//
-// El backend valida lo mismo (src/validators/placa.js); aquí se replica la
-// regla para dar respuesta inmediata al usuario sin gastar una petición.
-// ============================================================================
+// Espejo de backend/src/validators/placa.js: da respuesta inmediata al usuario
+// sin gastar una peticion.
+//   - Carro: 3 letras + 3 numeros          -> ABC123  (ABC-123)
+//   - Moto:  3 letras + 2 numeros + letra  -> ABC12C  (ABC-12C)
 
 export const FORMATOS_POR_TIPO = {
   carro: /^([A-Z]{3})-?([0-9]{3})$/,
@@ -17,34 +11,19 @@ export const FORMATOS_POR_TIPO = {
 
 export const FORMATOS = [FORMATOS_POR_TIPO.carro, FORMATOS_POR_TIPO.moto];
 
-/** Normaliza una placa: mayúsculas, sin espacios y sin guiones. */
+/** Normaliza una placa: mayusculas, sin espacios y sin guiones. */
 export const normalizarPlaca = (placa) =>
   String(placa ?? "")
     .trim()
     .toUpperCase()
     .replace(/[\s-]/g, "");
 
-/** Indica si la placa cumple el formato del tipo indicado (null = ambos). */
-export const esPlacaValida = (placa, tipo = null) => {
-  const p = normalizarPlaca(placa);
-  if (!p) return false;
-  if (tipo && FORMATOS_POR_TIPO[tipo]) {
-    return FORMATOS_POR_TIPO[tipo].test(p);
-  }
-  return FORMATOS.some((re) => re.test(p));
-};
-
-/**
- * Valida la placa y devuelve el detalle del error.
- * @returns {{ valida: boolean, placa: string, tipo: string|null, error: string|null }}
- */
+/** @returns {{ valida: boolean, placa: string, tipo: string|null, error: string|null }} */
 export const validarPlaca = (placa, tipo = null) => {
   const p = normalizarPlaca(placa);
   if (!p) {
     return { valida: false, placa: p, tipo, error: "La placa es obligatoria" };
   }
-
-  const tipoDetectado = p.match(FORMATOS_POR_TIPO.moto) ? "moto" : "carro";
 
   if (tipo && FORMATOS_POR_TIPO[tipo]) {
     if (!FORMATOS_POR_TIPO[tipo].test(p)) {
@@ -66,10 +45,10 @@ export const validarPlaca = (placa, tipo = null) => {
       valida: false,
       placa: p,
       tipo,
-      error:
-        "Formato inválido. Ejemplo: ABC123 (carro) o ABC12C (moto)",
+      error: "Formato inválido. Ejemplo: ABC123 (carro) o ABC12C (moto)",
     };
   }
 
+  const tipoDetectado = FORMATOS_POR_TIPO.moto.test(p) ? "moto" : "carro";
   return { valida: true, placa: p, tipo: tipoDetectado, error: null };
 };

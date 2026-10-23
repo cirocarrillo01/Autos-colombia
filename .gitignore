@@ -5,6 +5,7 @@
 # Dependencias
 node_modules/
 package-lock.json
+docs
 
 # Entorno (no versionar secretos ni credenciales)
 .env

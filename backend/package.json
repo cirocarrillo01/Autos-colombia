@@ -1,15 +1,15 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "backend de auto colombia - gestion de ingresos y salidas de parqueadero (MySQL nativo, sin Prisma)",
+  "description": "Backend de Auto Colombia - ingreso y salida de vehiculos (Express + MySQL nativo)",
   "license": "ISC",
-  "author": "",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "seed": "node src/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "seed": "node src/seeds/seed.js",
+    "seed:reset": "node src/seeds/seed.js --reset"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

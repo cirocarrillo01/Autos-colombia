@@ -1,30 +1,20 @@
 // backend/src/controllers/vehiculoController.js
-// ============================================================================
-// CONTROLADOR: VEHÍCULOS
-// ============================================================================
 // GET /api/vehiculos/:placa
-//
-// Devuelve lo que necesita el frontend de ingreso/salida:
+// Devuelve lo que necesita la pantalla de ingreso/salida:
 //   placa, estado ("Adentro" | "Fuera"), mensualidad (tarifa), tipo, tipoCodigo,
-//   modelo (año de lanzamiento), nombreModelo (nombre comercial), color,
-//   usuario (propietario),
+//   modelo (anio), nombreModelo, color, usuario (propietario) y
 //   estadoMensualidad ("Al día" | "En mora" | "Sin mensualidad").
 // "Adentro" se deriva de accesos_vehiculos con fecha_salida IS NULL.
-// ============================================================================
 
 import { query } from "../config/db.js";
 import { validarPlaca } from "../validators/placa.js";
 
 export const buscarVehiculoPorPlaca = async (req, res) => {
   try {
-    // Se usa el mismo normalizador que en los movimientos: mayúsculas, sin
-    // espacios y sin guiones. Así "car-001" y "CAR001" llegan al mismo
-    // vehículo que el resto del sistema.
     const formato = validarPlaca(req.params.placa);
     if (!formato.valida) {
       return res.status(400).json({ error: formato.error });
     }
-    const placa = formato.placa;
 
     const [v] = await query(
       `SELECT v.id_vehiculo, v.placa, v.propietario_nombre,
@@ -34,9 +24,8 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
        INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = v.id_tipo_vehiculo
        WHERE v.placa = ? AND v.activo = TRUE
        LIMIT 1`,
-      [placa],
+      [formato.placa],
     );
-
     if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
 
     const [accesoAbierto] = await query(
@@ -45,7 +34,7 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
       [v.id_vehiculo],
     );
 
-    // Estado derivado: fecha_fin de la última mensualidad activa vs hoy (comparado en SQL)
+    // Estado derivado: fecha_fin de la ultima mensualidad activa vs hoy
     const [mensualidad] = await query(
       `SELECT (fecha_fin >= CURRENT_DATE()) AS vigente
        FROM mensualidades
@@ -55,8 +44,9 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
     );
 
     let estadoMensualidad = "Sin mensualidad";
-    if (mensualidad)
+    if (mensualidad) {
       estadoMensualidad = mensualidad.vigente ? "Al día" : "En mora";
+    }
 
     res.json({
       id: v.id_vehiculo,

@@ -1,16 +1,5 @@
 // backend/src/routes/celdas.js
-
-// ============================================================================
-// RUTA: CELDAS
-// ============================================================================
-// GET /api/celdas?tipo=carro|moto
-//
-// Que hace:
-//   - Retorna celdas disponibles, opcionalmente filtradas por tipo.
-//
-// Que sucede si se configura:
-//   - Retorna arreglo de celdas con codigo e ID.
-// ============================================================================
+// GET /api/celdas?tipo=carro|moto - celdas libres, opcionalmente por tipo.
 
 import { Router } from "express";
 import { obtenerCeldasDisponibles } from "../controllers/celdaController.js";

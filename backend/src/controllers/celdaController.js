@@ -1,14 +1,8 @@
 // backend/src/controllers/celdaController.js
-
-// ============================================================================
-// CONTROLADOR: CELDAS
-// ============================================================================
 // GET /api/celdas?tipo=carro|moto
-//
-// Una celda está disponible si está activa, no está en mantenimiento y no tiene
+// Una celda esta disponible si esta activa, no esta en mantenimiento y no tiene
 // un acceso abierto (accesos_vehiculos.fecha_salida IS NULL).
 // Retorna [{ id_celda, codigo, id_tipo_vehiculo, letra, numero }].
-// ============================================================================
 
 import { query } from "../config/db.js";
 

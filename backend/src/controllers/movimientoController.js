@@ -1,25 +1,19 @@
-// frontend/src/controllers/movimientoController.js
-
-// ============================================================================
-// CONTROLADOR: MOVIMIENTOS (ingreso/salida sobre accesos_vehiculos)
-// ============================================================================
+// backend/src/controllers/movimientoController.js
 // POST /api/movimientos/entrada   body: { placa, id_celda }
 // POST /api/movimientos/salida    body: { placa }
 //
-// Sin autenticacion (no hay JWT):
-//   - Se usa el primer operador activo (el creado por el seed).
-//   - Si ese operador no tiene turno abierto, se crea uno automáticamente.
+// API abierta (sin JWT): se usa el primer operador activo y, si no tiene turno
+// abierto, se crea uno automaticamente.
 //
-// La disponibilidad de una celda NO se guarda en la tabla celdas (no tiene columna
-// "estado"): una celda está ocupada si existe un acceso con fecha_salida IS NULL.
-// Los índices únicos uq_acceso_vehiculo_dentro y uq_acceso_celda_ocupada del esquema
-// impiden duplicados incluso con peticiones simultáneas.
-// ============================================================================
+// La disponibilidad de una celda no se guarda en la tabla celdas: esta ocupada
+// si existe un acceso con fecha_salida IS NULL. Los indices unicos
+// uq_acceso_vehiculo_dentro y uq_acceso_celda_ocupada del esquema impiden
+// duplicados incluso con peticiones simultaneas.
 
 import { pool } from "../config/db.js";
 import { validarPlaca } from "../validators/placa.js";
 
-const ID_PUERTA_DEFECTO = 1; // el seed crea la puerta 1 (disponible de noche)
+const ID_PUERTA_DEFECTO = 1; // el seed crea la puerta 1
 const ZONA_HORARIA = "America/Bogota";
 
 class ErrorNegocio extends Error {
@@ -70,7 +64,7 @@ async function operadorYTurno(conn) {
   return { idOperador, idTurno: r.insertId };
 }
 
-// Ejecuta "trabajo" dentro de una transacción y centraliza el manejo de errores
+// Ejecuta "trabajo" dentro de una transaccion y centraliza el manejo de errores
 async function ejecutar(res, trabajo) {
   const conn = await pool.getConnection();
   try {
@@ -82,7 +76,7 @@ async function ejecutar(res, trabajo) {
     try {
       await conn.rollback();
     } catch {
-      /* ya cerrada */
+      /* conexion ya cerrada */
     }
     if (err instanceof ErrorNegocio) {
       return res.status(err.status).json({ error: err.message });
@@ -108,15 +102,11 @@ export const registrarEntrada = (req, res) => {
   }
 
   return ejecutar(res, async (conn) => {
-    // 0. Formato de la placa (carro: ABC123 / moto: ABC12C).
-    //    Se valida antes de tocar la base de datos para rechazar de una
-    //    placas que nunca van a existir.
+    // 0. Formato de la placa (se rechaza antes de tocar la base de datos)
     const formato = validarPlaca(placa);
-    if (!formato.valida) {
-      throw new ErrorNegocio(400, formato.error);
-    }
+    if (!formato.valida) throw new ErrorNegocio(400, formato.error);
 
-    // 1. Vehículo
+    // 1. Vehiculo
     const [vehiculos] = await conn.query(
       `SELECT v.id_vehiculo, v.placa, v.id_tipo_vehiculo, tv.nombre AS tipo,
               tv.codigo AS tipo_codigo
@@ -130,10 +120,8 @@ export const registrarEntrada = (req, res) => {
       throw new ErrorNegocio(404, "Vehículo no encontrado");
     const v = vehiculos[0];
 
-    // 1.1. El formato de la placa debe corresponder al tipo de vehículo
-    //      registrado (carro: ABC123 / moto: ABC12C).
-    const formatoSegunTipo = validarPlaca(v.placa, v.tipo_codigo);
-    if (!formatoSegunTipo.valida) {
+    // 1.1 El formato de la placa debe corresponder al tipo registrado
+    if (!validarPlaca(v.placa, v.tipo_codigo).valida) {
       throw new ErrorNegocio(
         400,
         `La placa ${v.placa} no tiene el formato válido para ${v.tipo}`,
@@ -149,8 +137,7 @@ export const registrarEntrada = (req, res) => {
     if (dentro.length > 0)
       throw new ErrorNegocio(400, "El vehículo ya está adentro");
 
-    // 2.1. La mensualidad debe estar vigente para poder ingresar.
-    // Bloqueo de negocio: solo entran vehículos con mensualidad al día.
+    // 2.1 Solo entran vehiculos con mensualidad vigente
     const [mensualidad] = await conn.query(
       `SELECT (fecha_fin >= CURRENT_DATE()) AS vigente
        FROM mensualidades
@@ -158,10 +145,12 @@ export const registrarEntrada = (req, res) => {
        ORDER BY fecha_fin DESC LIMIT 1`,
       [v.id_vehiculo],
     );
-    if (!mensualidad.length)
+    if (!mensualidad.length) {
       throw new ErrorNegocio(403, "El vehículo no tiene mensualidad activa");
-    if (!mensualidad[0].vigente)
+    }
+    if (!mensualidad[0].vigente) {
       throw new ErrorNegocio(403, "La mensualidad del vehículo está en mora");
+    }
 
     // 3. Celda activa, sin mantenimiento y del mismo tipo
     const [celdas] = await conn.query(
@@ -170,8 +159,9 @@ export const registrarEntrada = (req, res) => {
        LIMIT 1`,
       [id_celda],
     );
-    if (celdas.length === 0)
+    if (celdas.length === 0) {
       throw new ErrorNegocio(400, "La celda no existe o no está habilitada");
+    }
     const c = celdas[0];
     if (c.id_tipo_vehiculo !== v.id_tipo_vehiculo) {
       throw new ErrorNegocio(
@@ -219,13 +209,11 @@ export const registrarSalida = (req, res) => {
   if (!placa) return res.status(400).json({ error: "Placa requerida" });
 
   return ejecutar(res, async (conn) => {
-    // 0. Formato de la placa (carro: ABC123 / moto: ABC12C).
+    // 0. Formato de la placa
     const formato = validarPlaca(placa);
-    if (!formato.valida) {
-      throw new ErrorNegocio(400, formato.error);
-    }
+    if (!formato.valida) throw new ErrorNegocio(400, formato.error);
 
-    // 1. Vehículo
+    // 1. Vehiculo
     const [vehiculos] = await conn.query(
       `SELECT v.id_vehiculo, v.placa, tv.nombre AS tipo, tv.codigo AS tipo_codigo
        FROM vehiculos v
@@ -238,17 +226,15 @@ export const registrarSalida = (req, res) => {
       throw new ErrorNegocio(404, "Vehículo no encontrado");
     const v = vehiculos[0];
 
-    // 1.1. El formato de la placa debe corresponder al tipo de vehículo
-    //      registrado (carro: ABC123 / moto: ABC12C).
-    const formatoSegunTipo = validarPlaca(v.placa, v.tipo_codigo);
-    if (!formatoSegunTipo.valida) {
+    // 1.1 El formato de la placa debe corresponder al tipo registrado
+    if (!validarPlaca(v.placa, v.tipo_codigo).valida) {
       throw new ErrorNegocio(
         400,
         `La placa ${v.placa} no tiene el formato válido para ${v.tipo}`,
       );
     }
 
-    // 2. Acceso abierto (con el código de la celda)
+    // 2. Acceso abierto (con el codigo de la celda)
     const [accesos] = await conn.query(
       `SELECT a.id_acceso, c.codigo AS celda
        FROM accesos_vehiculos a

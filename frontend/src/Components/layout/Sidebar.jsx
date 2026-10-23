@@ -1,49 +1,42 @@
-// frontend/src/Components/Sidebar.jsx
+// frontend/src/Components/layout/Sidebar.jsx
 import { NavLink, useNavigate } from "react-router-dom";
 import { SidebarData } from "./SidebarData.jsx";
 import LogoutIcon from "@mui/icons-material/Logout";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import "./Sidebar.css";
 
 function Sidebar() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    sessionStorage.clear();
-    navigate("/login", { replace: true });
-  };
+  // Aun no hay autenticacion: el boton se conserva por diseno y solo
+  // devuelve a la pantalla inicial.
+  const handleLogout = () => navigate("/", { replace: true });
 
   return (
+    //imagen o logo
     <aside className="Sidebar">
-      {/* 1. Logo */}
       <div className="Sidebar-logo">
         <DirectionsCarIcon fontSize="large" />
         <span>Auto Colombia</span>
       </div>
-
-      {/* 2. Navegación */}
       <nav className="Sidebar-nav">
         <ul className="SidebarList">
-          {SidebarData.map((val, key) => (
-            <li key={key}>
+          {SidebarData.map((item) => (
+            <li key={item.link}>
               <NavLink
-                to={val.link}
-                // "title" permite identificar el icono cuando el sidebar está plegado (móvil)
-                title={val.title}
+                to={item.link}
+                // "title" identifica el icono cuando el sidebar esta plegado (movil)
+                title={item.title}
                 className={({ isActive }) => `row ${isActive ? "active" : ""}`}
               >
-                <div className="icon">{val.icon}</div>
-                <div className="title">{val.title}</div>
+                <div className="icon">{item.icon}</div>
+                <div className="title">{item.title}</div>
               </NavLink>
             </li>
           ))}
         </ul>
       </nav>
-
-      {/* 3. Logout al fondo */}
       <div className="Sidebar-footer">
-        {" "}
-        {/* 👈 guion corregido */}
         <button
           className="logout-btn"
           onClick={handleLogout}

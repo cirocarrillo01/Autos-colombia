@@ -1,0 +1,142 @@
+/* frontend/src/Components/layout/Sidebar.css */
+
+/* Sidebar fijo a la izquierda, toda la altura */
+.Sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 250px;
+  background-color: blue;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.Sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 55px 16px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.Sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Lista sin bullets ni margenes */
+.SidebarList {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  list-style: none;
+}
+
+/* Quitar subrayado de los enlaces del menu */
+.SidebarList a,
+.SidebarList a:link,
+.SidebarList a:visited,
+.SidebarList a:hover,
+.SidebarList a:focus,
+.SidebarList a:active {
+  text-decoration: none;
+  color: inherit;
+}
+
+.SidebarList .row {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  flex-direction: row;
+  color: white;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+  text-decoration: none;
+}
+
+.SidebarList .row:hover {
+  cursor: pointer;
+  background-color: #1208c7;
+  text-decoration: none;
+}
+
+.SidebarList .row.active {
+  background-color: #1208c7;
+  text-decoration: none;
+}
+
+.row .icon {
+  flex: 30%;
+  display: grid;
+  place-items: center;
+}
+
+.row .title {
+  flex: 70%;
+}
+
+/* Footer / logout (abajo) */
+.Sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.logout-btn {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.logout-btn:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Movil (<= 768px): el sidebar se pliega a una barra de 64px con solo iconos */
+@media (max-width: 768px) {
+  .Sidebar {
+    width: 64px;
+  }
+
+  .Sidebar-logo span,
+  .row .title,
+  .logout-btn span {
+    display: none;
+  }
+
+  .Sidebar-logo {
+    justify-content: center;
+    padding: 16px 0;
+  }
+
+  .SidebarList .row {
+    height: 48px;
+  }
+
+  .row .icon {
+    flex: 1;
+  }
+
+  .logout-btn {
+    padding: 0;
+  }
+}

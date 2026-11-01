@@ -46,6 +46,8 @@ CREATE TABLE usuarios (
   clave_hash      VARCHAR(255) NOT NULL,
   estado          ENUM('activo','inactivo') NOT NULL DEFAULT 'activo',
   ultimo_acceso   DATETIME NULL,
+  sesion_activa   BOOLEAN NOT NULL DEFAULT FALSE,
+  fecha_sesion_activa DATETIME NULL,
   fecha_registro  DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   UNIQUE KEY uq_usuario_documento (tipo_documento, documento),
   UNIQUE KEY uq_usuario_login     (usuario_login),
@@ -81,6 +83,7 @@ CREATE TABLE celdas (
                      (CONCAT(letra,'-',LPAD(numero,2,'0'))) STORED,
   activa           BOOLEAN NOT NULL DEFAULT TRUE,
   en_mantenimiento BOOLEAN NOT NULL DEFAULT FALSE,
+  mantenimiento_hasta DATETIME NULL,
   fecha_creacion   DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   UNIQUE KEY uq_celda_posicion (letra, numero),
   KEY ix_celda_codigo (codigo),
@@ -103,7 +106,7 @@ CREATE TABLE puertas (
 ) ENGINE=InnoDB;
 
 
--- VEHICULOS (placa + propietario + celda fija)
+-- VEHICULOS (placa + propietario)
 
 CREATE TABLE vehiculos (
   id_vehiculo                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -120,19 +123,14 @@ CREATE TABLE vehiculos (
   propietario_documento      VARCHAR(20) NOT NULL,
   propietario_telefono       VARCHAR(20),
   propietario_email          VARCHAR(120),
-  -- Celda fija asignada (puede ser NULL mientras se asigna)
-  id_celda_fija              SMALLINT UNSIGNED NULL,
   activo                     BOOLEAN NOT NULL DEFAULT TRUE,
   fecha_registro             DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   UNIQUE KEY uq_vehiculo_placa (placa),
-  UNIQUE KEY uq_vehiculo_celda_fija (id_celda_fija), -- NULL repetible
   KEY ix_vehiculo_tipo (id_tipo_vehiculo, activo),
   KEY ix_vehiculo_prop_doc (propietario_tipo_documento, propietario_documento),
   CONSTRAINT chk_vehiculo_placa CHECK (CHAR_LENGTH(placa) BETWEEN 5 AND 8                                 ),
   CONSTRAINT fk_vehiculo_tipo FOREIGN KEY (id_tipo_vehiculo)
-    REFERENCES tipos_vehiculos(id_tipo_vehiculo),
-  CONSTRAINT fk_vehiculo_celda FOREIGN KEY (id_celda_fija)
-    REFERENCES celdas(id_celda)
+    REFERENCES tipos_vehiculos(id_tipo_vehiculo)
 ) ENGINE=InnoDB;
 
 
@@ -208,7 +206,7 @@ CREATE TABLE pagos (
 ) ENGINE=InnoDB;
 
 
--- ACCESOS (ingreso → salida del vehículo; sin cobro, es solo bitácora)
+-- ACCESOS (ingreso â†’ salida del vehículo; sin cobro, es solo bitácora)
 
 CREATE TABLE accesos_vehiculos (
   id_acceso           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -277,7 +275,50 @@ CREATE TABLE login_attempts (
   KEY ix_la_ip      (ip_address, fecha_intento)
 ) ENGINE=InnoDB;
 
+
+-- AUDIT LOG (auditoria de acciones)
+CREATE TABLE audit_log (
+  id_audit      BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  id_usuario    INT UNSIGNED NULL,
+  usuario_login VARCHAR(40),
+  accion        VARCHAR(60) NOT NULL,
+  recurso       VARCHAR(60),
+  detalle       VARCHAR(255),
+  ip_address    VARCHAR(45),
+  fecha         DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
+  KEY ix_audit_usuario (id_usuario, fecha),
+  KEY ix_audit_accion (accion, fecha)
+) ENGINE=InnoDB;
+
+-- REVOKED TOKENS (revocacion de JWT)
+CREATE TABLE revoked_tokens (
+  id_revoked  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  jti         VARCHAR(64) NOT NULL,
+  id_usuario  INT UNSIGNED NULL,
+  expires_at  DATETIME NOT NULL,
+  revoked_at  DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
+  UNIQUE KEY uq_revoked_jti (jti),
+  KEY ix_revoked_expires (expires_at)
+) ENGINE=InnoDB;
+
+-- REFRESH TOKENS (sesiones persistentes)
+CREATE TABLE refresh_tokens (
+  id_refresh  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  id_usuario  INT UNSIGNED NOT NULL,
+  token       VARCHAR(128) NOT NULL,
+  expires_at  DATETIME NOT NULL,
+  revoked     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
+  UNIQUE KEY uq_refresh_token (token),
+  KEY ix_refresh_user (id_usuario),
+  KEY ix_refresh_expires (expires_at),
+  CONSTRAINT fk_refresh_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
+) ENGINE=InnoDB;
+
 USE autos_colombia;
 
 SELECT *
 FROM vehiculos;
+
+
+

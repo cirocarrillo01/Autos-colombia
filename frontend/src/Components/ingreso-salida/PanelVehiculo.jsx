@@ -8,21 +8,37 @@ const formatoPesos = (valor) =>
     maximumFractionDigits: 0,
   }).format(Number(valor));
 
+import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import TwoWheelerIcon from "@mui/icons-material/TwoWheeler";
+
 export default function PanelVehiculo({ vehiculo }) {
   const alDia = vehiculo.estadoMensualidad === "Al día";
   const nombreModelo = vehiculo.nombreModelo?.trim() ?? "";
   const anio = vehiculo.modelo?.trim() ?? "";
   const color = vehiculo.color?.trim() ?? "";
+  const tipoCodigo = vehiculo.tipoCodigo?.toLowerCase() ?? "";
+
+  const tipoColor = alDia ? "#388e3c" : "#d32f2f";
+  const panelClase = alDia ? "Resultado-panel" : "Resultado-panel Resultado-panel-mora";
+  const mensualidadClase = alDia
+    ? "Resultado-mensualidad"
+    : "Resultado-mensualidad Resultado-mensualidad-mora";
 
   return (
-    <div className="Resultado-panel">
+    <div className={panelClase}>
       <div className="Resultado-fila">
         <span className="Resultado-placa">{vehiculo.placa}</span>
         <span className="Resultado-estado">{vehiculo.estado}</span>
-        <span className="Resultado-mensualidad">
+        <span className={mensualidadClase}>
           {formatoPesos(vehiculo.mensualidad)}
         </span>
-        <span className="Resultado-tipo">{vehiculo.tipo}</span>
+        <span className="Resultado-tipo">
+          {tipoCodigo === "carro" ? (
+            <DirectionsCarIcon fontSize="large" style={{ color: tipoColor }} />
+          ) : (
+            <TwoWheelerIcon fontSize="large" style={{ color: tipoColor }} />
+          )}
+        </span>
       </div>
       <div className="Resultado-fila">
         <span className="Resultado-label">Modelo</span>

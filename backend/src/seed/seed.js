@@ -1,4 +1,4 @@
-// backend/src/seeds/seed.js
+﻿// backend/src/seeds/seed.js
 // Datos iniciales para probar ingreso y salida (la base se crea antes con
 // Script/parqueadero.sql, que no se modifica).
 //
@@ -26,6 +26,9 @@ const TABLAS = [
   "mensualidades",
   "turnos",
   "login_attempts",
+  "refresh_tokens",
+  "revoked_tokens",
+  "audit_log",
   "vehiculos",
   "celdas",
   "puertas",
@@ -83,20 +86,23 @@ const filaVehiculo = ({
   prefijoTel,
   modelo,
   color,
-}) => [
-  idTipo,
-  placa,
-  color,
-  modelo.anio,
-  modelo.nombre,
-  `${NOMBRES[(i - 1) % 10]} ${APELLIDOS[(i - 1) % 10]}`,
-  "cc",
-  String(baseDoc + ((i - 1) % 10)),
-  `${prefijoTel}${String(i).padStart(7, "0")}`,
-  `${NOMBRES[(i - 1) % 10].toLowerCase()}.${APELLIDOS[(i - 1) % 10].toLowerCase()}@email.com`,
-  null, // id_celda_fija
-  true,
-];
+}) => {
+  const nombre = NOMBRES[(i - 1) % NOMBRES.length];
+  const apellido = APELLIDOS[(i - 1) % APELLIDOS.length];
+  return [
+    idTipo,
+    placa,
+    color,
+    modelo.anio,
+    modelo.nombre,
+    `${nombre} ${apellido}`,
+    "cc",
+    String(baseDoc + i),
+    `${prefijoTel}${String(i).padStart(7, "0")}`,
+    `${nombre.toLowerCase()}.${apellido.toLowerCase()}${i}@email.com`,
+    true,
+  ];
+};
 
 async function main() {
   const reset = process.argv.includes("--reset");
@@ -105,16 +111,28 @@ async function main() {
     if (reset) {
       console.log("Modo --reset: se vacian todas las tablas...");
       await vaciarBase(conn);
-    }
-
-    const [[{ total }]] = await conn.query(
-      "SELECT COUNT(*) AS total FROM tipos_vehiculos",
-    );
-    if (total > 0) {
-      console.log(
-        "La base ya tiene datos. Usa `npm run seed:reset` para volver a sembrar.",
+    } else {
+      const [checks] = await conn.query(
+        `SELECT
+           (SELECT COUNT(*) FROM tipos_vehiculos) AS tipos,
+           (SELECT COUNT(*) FROM usuarios) AS usuarios,
+           (SELECT COUNT(*) FROM vehiculos) AS vehiculos,
+           (SELECT COUNT(*) FROM celdas) AS celdas,
+           (SELECT COUNT(*) FROM mensualidades) AS mensualidades`,
       );
-      return;
+      const estado = checks[0] ?? {};
+      const hayDatos =
+        Number(estado.tipos ?? 0) > 0 ||
+        Number(estado.usuarios ?? 0) > 0 ||
+        Number(estado.vehiculos ?? 0) > 0 ||
+        Number(estado.celdas ?? 0) > 0 ||
+        Number(estado.mensualidades ?? 0) > 0;
+
+      if (hayDatos) {
+        console.log("La base ya contiene datos: no se siembra de nuevo.");
+        console.log("Use `npm run seed:reset` para vaciar y resembrar.");
+        return;
+      }
     }
 
     await conn.beginTransaction();
@@ -164,6 +182,8 @@ async function main() {
     const idOperador = operador.insertId;
     console.log("Operador creado: usuario=operador, clave=123456");
 
+    await asegurarAdmin(conn);
+
     // 5. Vehiculos
     const vehiculos = [];
     const { carro, moto } = MODELOS_POR_TIPO;
@@ -197,7 +217,7 @@ async function main() {
       `INSERT INTO vehiculos (
          id_tipo_vehiculo, placa, color, modelo, nombre_modelo,
          propietario_nombre, propietario_tipo_documento, propietario_documento,
-         propietario_telefono, propietario_email, id_celda_fija, activo
+         propietario_telefono, propietario_email, activo
        ) VALUES ?`,
       [vehiculos],
     );
@@ -253,4 +273,21 @@ async function main() {
   }
 }
 
+async function asegurarAdmin(conn) {
+  const [existe] = await conn.query(
+    "SELECT id_usuario FROM usuarios WHERE usuario_login = 'admin' LIMIT 1",
+  );
+  if (existe.length > 0) return;
+  await conn.query(
+    `INSERT INTO usuarios
+       (rol, tipo_documento, documento, nombres, apellidos, telefono, email, usuario_login, clave_hash)
+     VALUES ('administrador', 'cc', '1000000001', 'Administrador', 'Principal',
+             '3000000001', 'admin@autoscolombia.com', 'admin', ?)`,
+    [await bcrypt.hash("123456", 10)],
+  );
+  console.log("Administrador creado: usuario=admin, clave=123456");
+}
+
 main();
+
+

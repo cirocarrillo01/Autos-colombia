@@ -1,26 +1,22 @@
 // frontend/src/App.jsx
-import { Routes, Route, Navigate } from "react-router-dom";
-import Sidebar from "./Components/layout/Sidebar.jsx";
-import Navbar from "./Components/layout/Navbar.jsx";
-import IngresoSalida from "./pages/IngresoSalida.jsx";
-import VistaVacia from "./pages/VistasVacia.jsx";
+import { Routes, Route } from "react-router-dom";
+import ProtectedRoute from "./Components/ProtectedRoute.jsx";
+import LoginPage from "./features/auth/pages/LoginPage.jsx";
+import AppRoutes from "./routes/AppRoutes.jsx";
 
 function App() {
   return (
-    <>
-      <Sidebar />
-      <Navbar />
-      <main className="App">
-        <Routes>
-          <Route index element={<Navigate to="/ingreso/salida" replace />} />
-          <Route path="/ingreso/salida" element={<IngresoSalida />} />
-          {/* Secciones del menu que aun no tienen contenido */}
-          <Route path="/dashboard" element={<VistaVacia />} />
-          <Route path="/vehiculo" element={<VistaVacia />} />
-          <Route path="/mensualidad" element={<VistaVacia />} />
-        </Routes>
-      </main>
-    </>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <AppRoutes />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
 

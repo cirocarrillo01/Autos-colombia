@@ -1,0 +1,3 @@
+﻿-- 001_initial_schema.sql
+-- Base schema is created with Script/parqueadero.sql
+-- This migration is a placeholder for the initial database.

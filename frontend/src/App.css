@@ -13,18 +13,20 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* El contenido principal se corre a la derecha del sidebar */
+/* El contenido principal se corre a la derecha del sidebar y
+   por debajo del navbar fijo (60px en escritorio). */
 .App {
   margin-left: 250px;
   min-height: 100vh;
   width: auto;
-  padding-top: 64px;
+  padding-top: 60px; /* altura real del Navbar en escritorio */
   box-sizing: border-box;
 }
 
-/* Movil: el sidebar queda plegado en 64px (ver Sidebar.css) */
+/* Móvil: sidebar plegado 64px y navbar de 64px de alto */
 @media (max-width: 768px) {
   .App {
     margin-left: 64px;
+    padding-top: 60px;
   }
 }

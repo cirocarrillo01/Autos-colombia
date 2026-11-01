@@ -67,4 +67,8 @@ export const env = {
   DB_PASSWORD: process.env.DB_PASSWORD ?? "",
   DB_NAME,
   CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:5173",
+  // Nº de proxies delante de la app (0 = ninguno). Detrás de Nginx o un
+  // load balancer se pone 1 (o el número que corresponda) para que
+  // req.ip refleje la IP real y el rate limiting funcione por cliente.
+  TRUST_PROXY: process.env.TRUST_PROXY ?? "0",
 };

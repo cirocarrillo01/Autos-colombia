@@ -1,4 +1,4 @@
-/** frontend/src/pages/Gestion.css**/
+/** frontend/src/pages/Gestion.css **/
 
 .Page {
   padding: 20px 25px 20px;
@@ -229,6 +229,12 @@
   margin-top: 12px;
 }
 
+/* =====================================================================
+   Vista por bloques (CeldasPage)
+   NOTA: la clase se llama .CeldaBloque (antes .Celda) para evitar
+   colisión con .Celda de IngresoSalida.css (formulario Ingreso/Salida),
+   que usa un estilo distinto sobre la misma clase.
+   ===================================================================== */
 .Bloques {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -248,7 +254,8 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.Celda {
+
+.CeldaBloque {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -262,36 +269,36 @@
   transition: all 0.2s;
 }
 
-.Celda--libre {
+.CeldaBloque--libre {
   background: #e8f5e9;
   color: #2e7d32;
   border: 1px solid #a5d6a7;
 }
 
-.Celda--ocupada {
+.CeldaBloque--ocupada {
   background: #fff3e0;
   color: #e65100;
   border: 1px solid #ffcc80;
 }
 
-.Celda--en-mantenimiento {
+.CeldaBloque--en-mantenimiento {
   background: #fff9c4;
   color: #f57f17;
   border: 1px solid #ffd54f;
 }
 
-.Celda--inactiva {
+.CeldaBloque--inactiva {
   background: #ffebee;
   color: #c62828;
   border: 1px solid #ef9a9a;
 }
 
-.Celda:hover {
+.CeldaBloque:hover {
   opacity: 0.9;
 }
 
 @media (max-width: 768px) {
-  .Celda {
+  .CeldaBloque {
     font-size: 0.65rem;
     padding: 4px 6px;
     min-width: 30px;
@@ -299,7 +306,7 @@
 }
 
 @media (max-width: 480px) {
-  .Celda {
+  .CeldaBloque {
     font-size: 0.55rem;
     padding: 3px 5px;
     min-width: 25px;

@@ -373,7 +373,7 @@ export default function CeldasPage() {
                 {b.celdas.map((c) => (
                   <span
                     key={c.id_celda}
-                    className={`Celda Celda--${slug(c.estado)}`}
+                    className={`CeldaBloque CeldaBloque--${slug(c.estado)}`}
                     title={`${c.codigo} · ${c.estado}`}
                   >
                     {c.codigo}

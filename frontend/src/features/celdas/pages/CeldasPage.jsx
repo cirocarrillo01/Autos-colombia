@@ -1,5 +1,4 @@
 // frontend/src/features/celdas/pages/CeldasPage.jsx
-
 import { useCallback, useEffect, useState } from "react";
 import {
   listarCeldas,
@@ -13,31 +12,69 @@ import {
   listarAccesos,
   reubicarVehiculo,
 } from "../../../services/api";
+import { usePolling } from "../../../hooks/usePolling";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from "@mui/material";
 import "../../../pages/Gestion.css";
 
 const ESTADOS = ["libre", "ocupada", "en mantenimiento", "inactiva"];
 const LIMITE = 10;
 const slug = (s) => String(s ?? "").replace(/\s/g, "-");
 
+const PRESETS_MANTENIMIENTO = [
+  { label: "15 min", horas: 0, minutos: 15 },
+  { label: "30 min", horas: 0, minutos: 30 },
+  { label: "1 hora", horas: 1, minutos: 0 },
+  { label: "2 horas", horas: 2, minutos: 0 },
+  { label: "4 horas", horas: 4, minutos: 0 },
+  { label: "8 horas", horas: 8, minutos: 0 },
+  { label: "1 día", horas: 24, minutos: 0 },
+];
+
 export default function CeldasPage() {
-  const [vista, setVista] = useState("lista"); // lista | bloques
+  const [vista, setVista] = useState("lista");
   const [tipos, setTipos] = useState([]);
   const [filtros, setFiltros] = useState({ tipo: "", bloque: "", estado: "" });
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ rows: [], total: 0 });
   const [bloques, setBloques] = useState([]);
-  const [nueva, setNueva] = useState({
+  const [msg, setMsg] = useState(null);
+
+  // ── Reubicación (ahora en Dialog) ───────────────────────────────────────
+  const [reubicando, setReubicando] = useState(null);
+  // Estructura: { id_acceso, id_celda, codigo, placa, id_tipo_vehiculo, error }
+
+  const [celdasDisponibles, setCeldasDisponibles] = useState([]);
+  const [celdaDestino, setCeldaDestino] = useState(null);
+  const [cargandoReb, setCargandoReb] = useState(false);
+
+  const [mantenimientoModal, setMantenimientoModal] = useState({
+    abierto: false,
+    celda: null,
+    horas: 0,
+    minutos: 30,
+    error: "",
+    enviando: false,
+  });
+
+  const [crearModal, setCrearModal] = useState({
+    abierto: false,
     letra: "",
     numero: "",
     id_tipo_vehiculo: "",
+    error: "",
+    enviando: false,
   });
-  const [msg, setMsg] = useState(null);
 
-  // Estado para reubicar el vehículo de una celda ocupada
-  const [reubicando, setReubicando] = useState(null); // { id_acceso, id_celda, codigo, placa, id_tipo_vehiculo }
-  const [celdasDisponibles, setCeldasDisponibles] = useState([]);
-  const [celdaDestino, setCeldaDestino] = useState(null); // { id_celda, codigo }
-  const [cargandoReb, setCargandoReb] = useState(false);
+  const [eliminarModal, setEliminarModal] = useState({
+    abierto: false,
+    celda: null,
+    enviando: false,
+  });
 
   const cargar = useCallback(async () => {
     try {
@@ -52,36 +89,25 @@ export default function CeldasPage() {
     }
   }, [filtros, page]);
 
-  useEffect(() => {
-    cargar();
-    const intervalo = setInterval(cargar, 5000);
-    const alVolver = () => {
-      if (document.visibilityState === "visible") cargar();
-    };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      clearInterval(intervalo);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, [cargar]);
+  usePolling(cargar, 30000);
 
   useEffect(() => {
     listarTiposVehiculo()
       .then((t) => {
         setTipos(t);
-        setNueva((n) => ({
-          ...n,
+        setCrearModal((m) => ({
+          ...m,
           id_tipo_vehiculo:
-            n.id_tipo_vehiculo || (t[0]?.id_tipo_vehiculo ?? ""),
+            m.id_tipo_vehiculo || (t[0]?.id_tipo_vehiculo ?? ""),
         }));
       })
       .catch((e) => setMsg({ tipo: "error", texto: e.message }));
   }, []);
 
-  const ejecutar = async (fn, okTexto) => {
+  const ejecutar = async (fn, okTexto, tipoOk = "ok") => {
     try {
       const r = await fn();
-      setMsg({ tipo: "ok", texto: r?.mensaje ?? okTexto });
+      setMsg({ tipo: tipoOk, texto: r?.mensaje ?? okTexto });
       cargar();
       return true;
     } catch (e) {
@@ -90,10 +116,77 @@ export default function CeldasPage() {
     }
   };
 
-  const crear = async (e) => {
-    e.preventDefault();
-    const ok = await ejecutar(() => crearCelda(nueva), "Celda creada");
-    if (ok) setNueva({ ...nueva, letra: "", numero: "" });
+  // ── Crear ───────────────────────────────────────────────────────────────
+  const abrirCrear = () => {
+    setCrearModal({
+      abierto: true,
+      letra: "",
+      numero: "",
+      id_tipo_vehiculo: tipos[0]?.id_tipo_vehiculo ?? "",
+      error: "",
+      enviando: false,
+    });
+  };
+
+  const cerrarCrear = () => {
+    setCrearModal((m) => ({ ...m, abierto: false, error: "" }));
+  };
+
+  const confirmarCrear = async (e) => {
+    if (e) e.preventDefault();
+    if (!crearModal.letra.trim()) {
+      setCrearModal((m) => ({ ...m, error: "El bloque es obligatorio" }));
+      return;
+    }
+    if (!crearModal.numero || Number(crearModal.numero) < 1) {
+      setCrearModal((m) => ({
+        ...m,
+        error: "El número debe ser mayor o igual a 1",
+      }));
+      return;
+    }
+    if (!crearModal.id_tipo_vehiculo) {
+      setCrearModal((m) => ({ ...m, error: "Selecciona un tipo de vehículo" }));
+      return;
+    }
+    setCrearModal((m) => ({ ...m, enviando: true, error: "" }));
+    try {
+      await crearCelda({
+        letra: crearModal.letra,
+        numero: crearModal.numero,
+        id_tipo_vehiculo: crearModal.id_tipo_vehiculo,
+      });
+      setMsg({ tipo: "ok", texto: "Celda creada" });
+      cerrarCrear();
+      cargar();
+    } catch (err) {
+      setCrearModal((m) => ({ ...m, error: err.message }));
+    } finally {
+      setCrearModal((m) => ({ ...m, enviando: false }));
+    }
+  };
+
+  // ── Eliminar ────────────────────────────────────────────────────────────
+  const abrirEliminar = (c) => {
+    setEliminarModal({ abierto: true, celda: c, enviando: false });
+  };
+
+  const cerrarEliminar = () => {
+    setEliminarModal({ abierto: false, celda: null, enviando: false });
+  };
+
+  const confirmarEliminar = async () => {
+    if (!eliminarModal.celda) return;
+    setEliminarModal((m) => ({ ...m, enviando: true }));
+    try {
+      await eliminarCelda(eliminarModal.celda.id_celda);
+      setMsg({ tipo: "error", texto: "Celda eliminada correctamente" });
+      cerrarEliminar();
+      cargar();
+    } catch (err) {
+      setMsg({ tipo: "error", texto: err.message });
+      setEliminarModal((m) => ({ ...m, enviando: false }));
+    }
   };
 
   const cambiarTipo = (c) => {
@@ -109,9 +202,46 @@ export default function CeldasPage() {
     }
   };
 
-  const eliminar = (c) => {
-    if (window.confirm(`¿Eliminar la celda ${c.codigo}?`)) {
-      ejecutar(() => eliminarCelda(c.id_celda), "Celda eliminada");
+  // ── Mantenimiento ───────────────────────────────────────────────────────
+  const abrirMantenimiento = (c) => {
+    setMantenimientoModal({
+      abierto: true,
+      celda: c,
+      horas: 0,
+      minutos: 30,
+      error: "",
+      enviando: false,
+    });
+  };
+
+  const cerrarMantenimiento = () => {
+    setMantenimientoModal((m) => ({ ...m, abierto: false, error: "" }));
+  };
+
+  const confirmarMantenimiento = async () => {
+    const horas = Number(mantenimientoModal.horas) || 0;
+    const minutos = Number(mantenimientoModal.minutos) || 0;
+    const total = horas * 60 + minutos;
+    if (!Number.isFinite(total) || total < 1) {
+      setMantenimientoModal((m) => ({
+        ...m,
+        error: "La duración debe ser mayor a 0 minutos",
+      }));
+      return;
+    }
+    setMantenimientoModal((m) => ({ ...m, enviando: true, error: "" }));
+    try {
+      await cambiarEstadoCelda(mantenimientoModal.celda.id_celda, {
+        en_mantenimiento: true,
+        minutos_mantenimiento: total,
+      });
+      setMsg({ tipo: "ok", texto: "Celda en mantenimiento" });
+      cerrarMantenimiento();
+      cargar();
+    } catch (e) {
+      setMantenimientoModal((m) => ({ ...m, error: e.message }));
+    } finally {
+      setMantenimientoModal((m) => ({ ...m, enviando: false }));
     }
   };
 
@@ -123,38 +253,17 @@ export default function CeldasPage() {
       );
       return;
     }
-    const horas = window.prompt("Horas de mantenimiento:", "0");
-    if (horas === null) return;
-    const minutos = window.prompt("Minutos de mantenimiento:", "30");
-    if (minutos === null) return;
-    const total = Number(horas) * 60 + Number(minutos);
-    if (!Number.isFinite(total) || total < 1) {
-      setMsg({ tipo: "error", texto: "Duración inválida" });
-      return;
-    }
-    ejecutar(
-      () =>
-        cambiarEstadoCelda(c.id_celda, {
-          en_mantenimiento: true,
-          minutos_mantenimiento: total,
-        }),
-      "Celda en mantenimiento",
-    );
+    abrirMantenimiento(c);
   };
 
-  // Abre el selector de reubicación: consulta celdas libres del mismo tipo y
-  // obtiene el id_acceso del vehículo que ocupa esa celda (desde el historial).
+  // ── Reubicación (Dialog) ────────────────────────────────────────────────
   const abrirSelectorReubicacion = async (celda) => {
     try {
-      // Celdas libres del mismo tipo ("carro" | "moto")
       const tipoCodigo = celda.tipo_codigo ?? celda.tipo;
       const disponibles = await obtenerCeldasDisponibles(tipoCodigo);
       setCeldasDisponibles(disponibles);
       setCeldaDestino(null);
 
-      // Necesitamos el id_acceso abierto de esta celda para reubicar.
-      // listarCeldas solo devuelve placa_ocupante, así que lo consultamos
-      // desde el historial filtrado por estado=adentro y celda.
       const accesos = await listarAccesos({
         estado: "adentro",
         celda: celda.codigo,
@@ -175,37 +284,10 @@ export default function CeldasPage() {
         codigo: celda.codigo,
         placa: celda.placa_ocupante ?? "",
         id_tipo_vehiculo: celda.id_tipo_vehiculo,
+        error: "",
       });
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
-    }
-  };
-
-  // Confirmar cambio de celda
-  const confirmarReubicacion = async () => {
-    if (!celdaDestino || !reubicando) return;
-    if (
-      !window.confirm(
-        `¿Confirmar reubicar el vehículo ${reubicando.placa} de la celda ${reubicando.codigo} a la celda ${celdaDestino.codigo}?`,
-      )
-    ) {
-      return;
-    }
-    setCargandoReb(true);
-    try {
-      await reubicarVehiculo(reubicando.id_acceso, celdaDestino.id_celda);
-      setMsg({
-        tipo: "ok",
-        texto: `Vehículo reubicado de ${reubicando.codigo} a ${celdaDestino.codigo}`,
-      });
-      setReubicando(null);
-      setCeldasDisponibles([]);
-      setCeldaDestino(null);
-      await cargar();
-    } catch (e) {
-      setMsg({ tipo: "error", texto: e.message });
-    } finally {
-      setCargandoReb(false);
     }
   };
 
@@ -215,6 +297,25 @@ export default function CeldasPage() {
     setCeldaDestino(null);
   };
 
+  const confirmarReubicacion = async () => {
+    if (!celdaDestino || !reubicando) return;
+    setCargandoReb(true);
+    try {
+      await reubicarVehiculo(reubicando.id_acceso, celdaDestino.id_celda);
+      setMsg({
+        tipo: "ok",
+        texto: `Vehículo reubicado de ${reubicando.codigo} a ${celdaDestino.codigo}`,
+      });
+      cancelarReubicacion();
+      await cargar();
+    } catch (e) {
+      // Mostrar el error dentro del propio Dialog para no cerrarlo.
+      setReubicando((r) => (r ? { ...r, error: e.message } : null));
+    } finally {
+      setCargandoReb(false);
+    }
+  };
+
   const filtrar = (campo) => (e) => {
     setPage(1);
     setFiltros({ ...filtros, [campo]: e.target.value });
@@ -222,99 +323,15 @@ export default function CeldasPage() {
 
   const paginas = Math.max(Math.ceil(data.total / LIMITE), 1);
 
+  const minutosTotales =
+    (Number(mantenimientoModal.horas) || 0) * 60 +
+    (Number(mantenimientoModal.minutos) || 0);
+  const finEstimado = new Date(Date.now() + minutosTotales * 60 * 1000);
+
   return (
     <div className="Page">
       <h2>Celdas</h2>
       {msg && <p className={`Msg Msg-${msg.tipo}`}>{msg.texto}</p>}
-
-      <form className="Card" onSubmit={crear}>
-        <h3 style={{ marginTop: 0 }}>Nueva celda</h3>
-        <div className="Toolbar" style={{ marginBottom: 0 }}>
-          <input
-            className="Input"
-            placeholder="Bloque (A-Z)"
-            maxLength={1}
-            required
-            style={{ width: 110 }}
-            value={nueva.letra}
-            onChange={(e) =>
-              setNueva({ ...nueva, letra: e.target.value.toUpperCase() })
-            }
-          />
-          <input
-            className="Input"
-            type="number"
-            min={1}
-            placeholder="Número"
-            required
-            style={{ width: 110 }}
-            value={nueva.numero}
-            onChange={(e) => setNueva({ ...nueva, numero: e.target.value })}
-          />
-          <select
-            className="Select"
-            value={nueva.id_tipo_vehiculo}
-            onChange={(e) =>
-              setNueva({ ...nueva, id_tipo_vehiculo: e.target.value })
-            }
-          >
-            {tipos.map((t) => (
-              <option key={t.id_tipo_vehiculo} value={t.id_tipo_vehiculo}>
-                {t.nombre}
-              </option>
-            ))}
-          </select>
-          <button className="Btn Btn--primary" type="submit">
-            Crear
-          </button>
-        </div>
-      </form>
-
-      {/* Panel de reubicación: SOLO en vista Lista, justo debajo de "Nueva celda" */}
-      {vista === "lista" && reubicando && (
-        <div className="Card">
-          <h3 style={{ marginTop: 0 }}>
-            Reubicar vehículo {reubicando.placa || "(desconocido)"} (celda{" "}
-            {reubicando.codigo})
-          </h3>
-          <div className="Toolbar">
-            <select
-              className="Select"
-              value={celdaDestino?.id_celda ?? ""}
-              onChange={(e) => {
-                const id = Number(e.target.value);
-                setCeldaDestino(
-                  celdasDisponibles.find((d) => d.id_celda === id) ?? null,
-                );
-              }}
-            >
-              <option value="">Selecciona celda destino</option>
-              {celdasDisponibles.map((d) => (
-                <option key={d.id_celda} value={d.id_celda}>
-                  {d.codigo}
-                </option>
-              ))}
-            </select>
-            <button
-              className="Btn Btn--primary"
-              disabled={!celdaDestino || cargandoReb}
-              onClick={confirmarReubicacion}
-            >
-              {cargandoReb ? "Reubicando…" : "Confirmar"}
-            </button>
-            <button
-              className="Btn"
-              onClick={cancelarReubicacion}
-              disabled={cargandoReb}
-            >
-              Cancelar
-            </button>
-          </div>
-          {celdasDisponibles.length === 0 && (
-            <p className="Error">No hay celdas disponibles de este tipo.</p>
-          )}
-        </div>
-      )}
 
       <div className="Toolbar">
         <button
@@ -362,6 +379,13 @@ export default function CeldasPage() {
             </select>
           </>
         )}
+        <button
+          className="Btn Btn--primary"
+          onClick={abrirCrear}
+          style={{ marginLeft: "auto" }}
+        >
+          Crear celda
+        </button>
       </div>
 
       {vista === "bloques" ? (
@@ -426,15 +450,18 @@ export default function CeldasPage() {
                         className={`Btn Btn--sm ${
                           c.activa ? "Btn--danger" : "Btn--success"
                         }`}
-                        onClick={() =>
-                          ejecutar(
+                        style={{ minWidth: 110 }}
+                        onClick={() => {
+                          const inactivando = c.activa;
+                          return ejecutar(
                             () =>
                               cambiarEstadoCelda(c.id_celda, {
                                 activa: !c.activa,
                               }),
-                            "Estado actualizado",
-                          )
-                        }
+                            inactivando ? "Celda inactivada" : "Celda activada",
+                            inactivando ? "error" : "ok",
+                          );
+                        }}
                       >
                         {c.activa ? "Inactivar" : "Activar"}
                       </button>
@@ -450,7 +477,7 @@ export default function CeldasPage() {
                       {c.estado === "libre" && (
                         <button
                           className="Btn Btn--sm Btn--danger"
-                          onClick={() => eliminar(c)}
+                          onClick={() => abrirEliminar(c)}
                         >
                           Eliminar
                         </button>
@@ -462,7 +489,7 @@ export default function CeldasPage() {
                           title="Reubicar vehículo"
                           onClick={() => abrirSelectorReubicacion(c)}
                         >
-                          reubicar
+                          Reubicar
                         </button>
                       )}
                     </div>
@@ -492,6 +519,425 @@ export default function CeldasPage() {
           </div>
         </div>
       )}
+
+      {/* ── Dialog: Crear celda ───────────────────────────────────────── */}
+      <Dialog
+        open={crearModal.abierto}
+        onClose={cerrarCrear}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Nueva celda</DialogTitle>
+        <form onSubmit={confirmarCrear}>
+          <DialogContent>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label
+                  htmlFor="nueva-letra"
+                  style={{
+                    display: "block",
+                    marginBottom: 4,
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Bloque (A-Z)
+                </label>
+                <input
+                  id="nueva-letra"
+                  className="Input"
+                  placeholder="Ej. A"
+                  maxLength={1}
+                  value={crearModal.letra}
+                  onChange={(e) =>
+                    setCrearModal((m) => ({
+                      ...m,
+                      letra: e.target.value.toUpperCase(),
+                      error: "",
+                    }))
+                  }
+                  style={{ width: "100%" }}
+                  disabled={crearModal.enviando}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="nueva-numero"
+                  style={{
+                    display: "block",
+                    marginBottom: 4,
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Número
+                </label>
+                <input
+                  id="nueva-numero"
+                  className="Input"
+                  type="number"
+                  min={1}
+                  placeholder="Ej. 5"
+                  value={crearModal.numero}
+                  onChange={(e) =>
+                    setCrearModal((m) => ({
+                      ...m,
+                      numero: e.target.value,
+                      error: "",
+                    }))
+                  }
+                  style={{ width: "100%" }}
+                  disabled={crearModal.enviando}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="nueva-tipo"
+                  style={{
+                    display: "block",
+                    marginBottom: 4,
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Tipo de vehículo
+                </label>
+                <select
+                  id="nueva-tipo"
+                  className="Select"
+                  value={crearModal.id_tipo_vehiculo}
+                  onChange={(e) =>
+                    setCrearModal((m) => ({
+                      ...m,
+                      id_tipo_vehiculo: e.target.value,
+                      error: "",
+                    }))
+                  }
+                  style={{ width: "100%" }}
+                  disabled={crearModal.enviando}
+                >
+                  {tipos.map((t) => (
+                    <option key={t.id_tipo_vehiculo} value={t.id_tipo_vehiculo}>
+                      {t.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {crearModal.error && (
+              <p className="Msg Msg-error" style={{ marginTop: 14 }}>
+                {crearModal.error}
+              </p>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <button
+              type="submit"
+              className="Btn Btn--primary"
+              disabled={crearModal.enviando}
+            >
+              {crearModal.enviando ? "Creando…" : "Crear"}
+            </button>
+            <button
+              type="button"
+              className="Btn"
+              onClick={cerrarCrear}
+              disabled={crearModal.enviando}
+            >
+              Cancelar
+            </button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* ── Dialog: Eliminar celda ────────────────────────────────────── */}
+      <Dialog
+        open={eliminarModal.abierto}
+        onClose={cerrarEliminar}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Eliminar celda</DialogTitle>
+        <DialogContent>
+          <p style={{ marginTop: 0 }}>
+            ¿Está seguro de eliminar la celda{" "}
+            <strong>{eliminarModal.celda?.codigo}</strong>?
+          </p>
+          <p style={{ color: "#9e9e9e", fontSize: "0.85rem", margin: 0 }}>
+            Esta acción no se puede deshacer. Solo se permite eliminar celdas
+            libres sin historial de accesos.
+          </p>
+        </DialogContent>
+        <DialogActions>
+          <button
+            type="button"
+            className="Btn Btn--danger"
+            onClick={confirmarEliminar}
+            disabled={eliminarModal.enviando}
+          >
+            {eliminarModal.enviando ? "Eliminando…" : "Eliminar"}
+          </button>
+          <button
+            type="button"
+            className="Btn"
+            onClick={cerrarEliminar}
+            disabled={eliminarModal.enviando}
+          >
+            Cancelar
+          </button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Dialog: Reubicar vehículo ─────────────────────────────────── */}
+      <Dialog
+        open={Boolean(reubicando)}
+        onClose={cancelarReubicacion}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          Reubicar vehículo {reubicando?.placa || "(desconocido)"}
+        </DialogTitle>
+        <DialogContent>
+          <p style={{ marginTop: 0 }}>
+            Celda actual: <strong>{reubicando?.codigo}</strong>
+          </p>
+
+          <label
+            htmlFor="reubicar-destino"
+            style={{
+              display: "block",
+              marginTop: 8,
+              marginBottom: 4,
+              fontWeight: 600,
+              fontSize: "0.9rem",
+            }}
+          >
+            Celda destino
+          </label>
+          <select
+            id="reubicar-destino"
+            className="Select"
+            value={celdaDestino?.id_celda ?? ""}
+            onChange={(e) => {
+              const id = Number(e.target.value);
+              setCeldaDestino(
+                celdasDisponibles.find((d) => d.id_celda === id) ?? null,
+              );
+              // Limpiar error previo al cambiar la selección
+              setReubicando((r) => (r ? { ...r, error: "" } : null));
+            }}
+            style={{ width: "100%" }}
+            disabled={cargandoReb}
+          >
+            <option value="">Selecciona celda destino</option>
+            {celdasDisponibles.map((d) => (
+              <option key={d.id_celda} value={d.id_celda}>
+                {d.codigo}
+              </option>
+            ))}
+          </select>
+
+          {celdasDisponibles.length === 0 && (
+            <p className="Error" style={{ marginTop: 12 }}>
+              No hay celdas disponibles de este tipo.
+            </p>
+          )}
+
+          {reubicando?.error && (
+            <p className="Msg Msg-error" style={{ marginTop: 14 }}>
+              {reubicando.error}
+            </p>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <button
+            type="button"
+            className="Btn Btn--primary"
+            onClick={confirmarReubicacion}
+            disabled={!celdaDestino || cargandoReb}
+          >
+            {cargandoReb ? "Reubicando…" : "Confirmar"}
+          </button>
+          <button
+            type="button"
+            className="Btn"
+            onClick={cancelarReubicacion}
+            disabled={cargandoReb}
+          >
+            Cancelar
+          </button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Dialog: Mantenimiento ─────────────────────────────────────── */}
+      <Dialog
+        open={mantenimientoModal.abierto}
+        onClose={cerrarMantenimiento}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          Mantenimiento de la celda {mantenimientoModal.celda?.codigo}
+        </DialogTitle>
+        <DialogContent>
+          <p style={{ marginTop: 0 }}>
+            Indique cuánto tiempo estará fuera de servicio esta celda.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "flex-end",
+              marginTop: 12,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <label
+                htmlFor="mant-horas"
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                }}
+              >
+                Horas
+              </label>
+              <input
+                id="mant-horas"
+                className="Input"
+                type="number"
+                min={0}
+                max={168}
+                value={mantenimientoModal.horas}
+                onChange={(e) =>
+                  setMantenimientoModal((m) => ({
+                    ...m,
+                    horas: e.target.value,
+                    error: "",
+                  }))
+                }
+                style={{ width: "100%" }}
+                disabled={mantenimientoModal.enviando}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label
+                htmlFor="mant-minutos"
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                }}
+              >
+                Minutos
+              </label>
+              <input
+                id="mant-minutos"
+                className="Input"
+                type="number"
+                min={0}
+                max={59}
+                value={mantenimientoModal.minutos}
+                onChange={(e) =>
+                  setMantenimientoModal((m) => ({
+                    ...m,
+                    minutos: e.target.value,
+                    error: "",
+                  }))
+                }
+                style={{ width: "100%" }}
+                disabled={mantenimientoModal.enviando}
+              />
+            </div>
+          </div>
+
+          <p
+            style={{
+              color: "#9e9e9e",
+              fontSize: "0.85rem",
+              margin: "10px 0 4px",
+            }}
+          >
+            Atajos rápidos:
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {PRESETS_MANTENIMIENTO.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className="Btn Btn--sm"
+                onClick={() =>
+                  setMantenimientoModal((m) => ({
+                    ...m,
+                    horas: p.horas,
+                    minutos: p.minutos,
+                    error: "",
+                  }))
+                }
+                disabled={mantenimientoModal.enviando}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {minutosTotales > 0 && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "10px 12px",
+                background: "#e8f5e9",
+                border: "1px solid #a5d6a7",
+                borderRadius: 6,
+                color: "#2e7d32",
+                fontSize: "0.85rem",
+              }}
+            >
+              <strong>Se liberará:</strong>{" "}
+              {finEstimado.toLocaleDateString("es-CO", {
+                weekday: "short",
+                day: "2-digit",
+                month: "short",
+              })}{" "}
+              a las{" "}
+              {finEstimado.toLocaleTimeString("es-CO", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}{" "}
+              ({minutosTotales} min en total)
+            </div>
+          )}
+
+          {mantenimientoModal.error && (
+            <p className="Msg Msg-error" style={{ marginTop: 14 }}>
+              {mantenimientoModal.error}
+            </p>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <button
+            type="button"
+            className="Btn Btn--primary"
+            onClick={confirmarMantenimiento}
+            disabled={mantenimientoModal.enviando || minutosTotales < 1}
+          >
+            {mantenimientoModal.enviando ? "Aplicando…" : "Aplicar"}
+          </button>
+          <button
+            type="button"
+            className="Btn"
+            onClick={cerrarMantenimiento}
+            disabled={mantenimientoModal.enviando}
+          >
+            Cancelar
+          </button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

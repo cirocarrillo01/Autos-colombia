@@ -1,5 +1,5 @@
 // frontend/src/features/users/pages/UserListPage.jsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/context/AuthContext";
 import {
@@ -8,6 +8,7 @@ import {
   restablecerClaveUsuario,
   verifyPassword,
 } from "../../../services/api";
+import { usePolling } from "../../../hooks/usePolling";
 import {
   Dialog,
   DialogTitle,
@@ -27,7 +28,6 @@ export default function UserListPage() {
   const [data, setData] = useState({ rows: [], total: 0 });
   const [msg, setMsg] = useState(null);
 
-  // Diálogo de restablecimiento de clave: 1) confirmar admin → 2) nueva clave.
   const [modal, setModal] = useState({
     abierto: false,
     usuario: null,
@@ -39,11 +39,6 @@ export default function UserListPage() {
     enviando: false,
   });
 
-  // Re-autenticación ANTES de navegar al formulario de edición.
-  // Es una medida de seguridad (defensa en profundidad): se verifica la
-  // identidad del admin antes de exponer el formulario que modificará
-  // datos de otro usuario. El backend vuelve a validar claveAdmin al
-  // aplicar el cambio (segunda capa).
   const [editConfirm, setEditConfirm] = useState({
     abierto: false,
     usuario: null,
@@ -52,7 +47,6 @@ export default function UserListPage() {
     enviando: false,
   });
 
-  // Re-autenticación ANTES de crear un nuevo usuario.
   const [nuevoConfirm, setNuevoConfirm] = useState({
     abierto: false,
     adminClave: "",
@@ -68,21 +62,7 @@ export default function UserListPage() {
     }
   }, [aplicados, page]);
 
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
-
-  useEffect(() => {
-    const intervalo = setInterval(cargar, 5000);
-    const alVolver = () => {
-      if (document.visibilityState === "visible") cargar();
-    };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      clearInterval(intervalo);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, [cargar]);
+  usePolling(cargar, 30000);
 
   const buscar = (e) => {
     e.preventDefault();
@@ -90,25 +70,31 @@ export default function UserListPage() {
     setAplicados(filtros);
   };
 
-  const accion = async (fn, okTexto) => {
+  // tipoOk permite elegir el estilo del mensaje de éxito.
+  // Se usa "error" para acciones destructivas (desactivar) para que se
+  // pinte en rojo como el resto de avisos destructivos de la app.
+  const accion = async (fn, okTexto, tipoOk = "ok") => {
     try {
       await fn();
-      setMsg({ tipo: "ok", texto: okTexto });
+      setMsg({ tipo: tipoOk, texto: okTexto });
       cargar();
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
     }
   };
 
-  const alternarEstado = (u) =>
-    accion(
+  const alternarEstado = (u) => {
+    const desactivando = u.estado === "activo";
+    return accion(
       () =>
         cambiarEstadoUsuario(
           u.id_usuario,
-          u.estado === "activo" ? "inactivo" : "activo",
+          desactivando ? "inactivo" : "activo",
         ),
-      `Usuario ${u.estado === "activo" ? "desactivado" : "activado"}`,
+      `Usuario ${desactivando ? "desactivado" : "activado"}`,
+      desactivando ? "error" : "ok",
     );
+  };
 
   const abrirClave = (u) =>
     setModal({
@@ -125,7 +111,6 @@ export default function UserListPage() {
   const cerrarClave = () =>
     setModal((m) => ({ ...m, abierto: false, error: "" }));
 
-  // ── Editar: re-autenticación previa (1ª capa) ─────────────────────────
   const abrirEditar = (u) =>
     setEditConfirm({
       abierto: true,
@@ -151,7 +136,6 @@ export default function UserListPage() {
     }
   };
 
-  // ── Nuevo usuario: re-autenticación previa ────────────────────────────
   const abrirNuevoUsuario = () =>
     setNuevoConfirm({
       abierto: true,
@@ -176,7 +160,6 @@ export default function UserListPage() {
     }
   };
 
-  // ── Restablecer clave: paso 1 (verificar admin) ───────────────────────
   const confirmarAdmin = async () => {
     setModal((m) => ({ ...m, enviando: true, error: "" }));
     try {
@@ -189,7 +172,6 @@ export default function UserListPage() {
     }
   };
 
-  // ── Restablecer clave: paso 2 (enviar nueva) ──────────────────────────
   const guardarClave = async () => {
     if (modal.nueva.length < 4) {
       setModal((m) => ({
@@ -230,7 +212,7 @@ export default function UserListPage() {
 
       <form className="Toolbar" onSubmit={buscar}>
         <input
-          className="Input"
+          className="Input Input--search"
           placeholder="Nombre, documento o usuario"
           value={filtros.search}
           onChange={(e) => setFiltros({ ...filtros, search: e.target.value })}
@@ -256,7 +238,6 @@ export default function UserListPage() {
         <button className="Btn" type="submit">
           Buscar
         </button>
-        {/* type="button": evita disparar el submit del form de búsqueda */}
         <button
           type="button"
           className="Btn Btn--primary"
@@ -311,7 +292,6 @@ export default function UserListPage() {
                   </td>
                   <td>
                     <div className="Tabla-acciones">
-                      {/* Editar abre diálogo de re-autenticación */}
                       <button
                         type="button"
                         className="Btn Btn--sm"
@@ -367,7 +347,6 @@ export default function UserListPage() {
           </button>
         </div>
 
-        {/* ===== Diálogo: restablecer clave (2 pasos) ===== */}
         <Dialog
           open={modal.abierto}
           onClose={cerrarClave}
@@ -453,7 +432,6 @@ export default function UserListPage() {
           </DialogActions>
         </Dialog>
 
-        {/* ===== Diálogo: re-autenticación antes de editar (1ª capa) ===== */}
         <Dialog
           open={editConfirm.abierto}
           onClose={cerrarEditar}
@@ -502,7 +480,6 @@ export default function UserListPage() {
           </DialogActions>
         </Dialog>
 
-        {/* ===== Diálogo: re-autenticación antes de crear usuario ===== */}
         <Dialog
           open={nuevoConfirm.abierto}
           onClose={cerrarNuevo}

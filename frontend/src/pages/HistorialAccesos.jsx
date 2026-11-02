@@ -1,6 +1,7 @@
-﻿// backend/src/HistorialAccesos.jsx
+﻿// frontend/src/pages/HistorialAccesos.jsx
 import { useCallback, useEffect, useState } from "react";
 import { listarAccesos } from "../services/api";
+import { usePolling } from "../hooks/usePolling";
 import "../pages/Gestion.css";
 
 const LIMITE = 20;
@@ -31,19 +32,9 @@ export default function HistorialAccesos() {
     }
   }, [aplicados, page]);
 
-  useEffect(() => {
-    cargar();
-    const intervalo = setInterval(cargar, 5000);
-    const alVolver = () => {
-      if (document.visibilityState === "visible") cargar();
-    };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      clearInterval(intervalo);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, [cargar]);
+  usePolling(cargar, 30000);
 
+  // Debounce de filtros → aplicados (el polling reacciona al cambio de `cargar`)
   useEffect(() => {
     const t = setTimeout(() => {
       setPage(1);

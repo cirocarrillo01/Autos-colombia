@@ -60,6 +60,13 @@
   box-sizing: border-box;
 }
 
+/* Caja de búsqueda: crece con el espacio disponible pero nunca queda
+   más angosta que el placeholder para que no se recorte. */
+.Input--search {
+  flex: 1 1 240px; /* crece, se encoge hasta 240px, base 240px */
+  min-width: 240px; /* nunca menos que el placeholder completo */
+}
+
 .Btn {
   display: inline-flex;
   align-items: center;

@@ -1,9 +1,10 @@
 // frontend/src/pages/DashboardOperador.jsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/context/AuthContext";
 import { resumenCeldas } from "../services/api";
 import ResumenCeldas from "../Components/ResumenCeldas.jsx";
+import { usePolling } from "../hooks/usePolling";
 import "./Gestion.css";
 
 export default function DashboardOperador() {
@@ -21,18 +22,7 @@ export default function DashboardOperador() {
     }
   }, []);
 
-  useEffect(() => {
-    cargar();
-    const intervalo = setInterval(cargar, 5000);
-    const alVolver = () => {
-      if (document.visibilityState === "visible") cargar();
-    };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      clearInterval(intervalo);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, [cargar]);
+  usePolling(cargar, 30000);
 
   return (
     <div className="Page">

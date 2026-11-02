@@ -33,9 +33,8 @@ const qs = (obj = {}) => {
 /**
  * Intenta renovar el access token usando el refresh token guardado.
  * - Serializa las llamadas concurrentes: si 5 peticiones reciben 401 a la
- *   vez, solo se hace un POST /auth/refresh y las 5 esperan el mismo
- *   resultado. Evita rotaciones cruzadas que invaliden el refresh token.
- * - Si el refresh falla, limpia ambos tokens y avisa a AuthContext.
+ *   vez, solo se hace un POST /auth/refresh y las 5 esperan el mismo resultado.
+ * - Lanza un error con `.status` para que el llamador decida si cerrar sesión.
  */
 let refreshEnCurso = null;
 
@@ -57,9 +56,11 @@ const refrescarAccessToken = () => {
       });
     });
     if (!res.ok) {
-      throw Object.assign(new Error("Refresh token inválido o expirado"), {
-        status: res.status,
-      });
+      const data = await res.json().catch(() => ({}));
+      throw Object.assign(
+        new Error(data.error || "Refresh token inválido o expirado"),
+        { status: res.status },
+      );
     }
     const data = await res.json();
     setToken(data.token);
@@ -70,6 +71,13 @@ const refrescarAccessToken = () => {
   return refreshEnCurso.finally(() => {
     refreshEnCurso = null;
   });
+};
+
+/** Limpia tokens y avisa a AuthContext. Solo para 401/403 reales. */
+const limpiarSesion = () => {
+  setToken(null);
+  setRefreshToken(null);
+  window.dispatchEvent(new Event("auth:expired"));
 };
 
 async function pedir(url, opciones = {}, auth = true) {
@@ -86,23 +94,25 @@ async function pedir(url, opciones = {}, auth = true) {
     throw new Error("No se pudo conectar con el servidor");
   }
 
-  // 401 en ruta autenticada + hay refresh guardado → intentar renovar y
-  // reintentar UNA sola vez. `auth=true` evita reintentar el propio
-  // /auth/refresh o /auth/login (que se llaman con auth=false).
+  // 401 en ruta autenticada + hay refresh guardado → renovar y reintentar UNA vez.
   if (res.status === 401 && auth && getRefreshToken()) {
     try {
       const nuevoToken = await refrescarAccessToken();
       headers.Authorization = `Bearer ${nuevoToken}`;
       res = await fetch(url, { ...opciones, headers });
-    } catch {
-      setToken(null);
-      setRefreshToken(null);
-      window.dispatchEvent(new Event("auth:expired"));
+    } catch (refreshErr) {
+      // IMPORTANTE: un 429, 5xx o fallo de red en el refresh NO debe expulsar
+      // al usuario. Solo cerramos sesión si el refresh fue rechazado (401/403).
+      if (refreshErr?.status === 401 || refreshErr?.status === 403) {
+        limpiarSesion();
+      }
       const data = await res.json().catch(() => ({}));
       const err = new Error(
-        data.error || "Sesión expirada. Inicie sesión de nuevo.",
+        data.error ||
+          refreshErr?.message ||
+          "Sesión expirada. Inicie sesión de nuevo.",
       );
-      err.status = 401;
+      err.status = refreshErr?.status ?? 401;
       throw err;
     }
   }
@@ -114,13 +124,10 @@ async function pedir(url, opciones = {}, auth = true) {
       403: "No tiene permiso para acceder a este recurso.",
       404: "El recurso solicitado no existe.",
       422: "Datos de validación incorrectos. Verifique la información ingresada.",
+      429: "El servidor está ocupado. Reintentando en unos segundos…",
       500: "Error interno del servidor. Por favor, intente más tarde.",
     };
-    if (res.status === 401 && auth) {
-      setToken(null);
-      setRefreshToken(null);
-      window.dispatchEvent(new Event("auth:expired"));
-    }
+    if (res.status === 401 && auth) limpiarSesion();
     const errorMessage =
       data.error || errorMessages[res.status] || "Error en la solicitud";
     const error = new Error(errorMessage);

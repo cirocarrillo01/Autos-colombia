@@ -6,6 +6,7 @@
 node_modules/
 package-lock.json
 docs
+documentacion
 
 # Entorno (no versionar secretos ni credenciales)
 .env

@@ -25,6 +25,15 @@ const ESTADOS = ["libre", "ocupada", "en mantenimiento", "inactiva"];
 const LIMITE = 10;
 const slug = (s) => String(s ?? "").replace(/\s/g, "-");
 
+// Devuelve el tipo (o tipos) de vehículo presentes en un bloque.
+// Ej: "Carro", "Moto", "Mixto (Carro / Moto)" o "" si no hay celdas.
+const tipoBloque = (celdas = []) => {
+  const tipos = [...new Set(celdas.map((c) => c.tipo).filter(Boolean))];
+  if (tipos.length === 0) return "";
+  if (tipos.length === 1) return tipos[0];
+  return `Mixto (${tipos.join(" / ")})`;
+};
+
 const PRESETS_MANTENIMIENTO = [
   { label: "15 min", horas: 0, minutos: 15 },
   { label: "30 min", horas: 0, minutos: 30 },
@@ -390,22 +399,28 @@ export default function CeldasPage() {
 
       {vista === "bloques" ? (
         <div className="Bloques">
-          {bloques.map((b) => (
-            <div className="Bloque" key={b.bloque}>
-              <h4>Bloque {b.bloque}</h4>
-              <div className="Bloque-celdas">
-                {b.celdas.map((c) => (
-                  <span
-                    key={c.id_celda}
-                    className={`CeldaBloque CeldaBloque--${slug(c.estado)}`}
-                    title={`${c.codigo} · ${c.estado}`}
-                  >
-                    {c.codigo}
-                  </span>
-                ))}
+          {bloques.map((b) => {
+            const tipo = tipoBloque(b.celdas);
+            return (
+              <div className="Bloque" key={b.bloque}>
+                <h4>
+                  Bloque {b.bloque}
+                  {tipo ? ` - ${tipo}` : ""}
+                </h4>
+                <div className="Bloque-celdas">
+                  {b.celdas.map((c) => (
+                    <span
+                      key={c.id_celda}
+                      className={`CeldaBloque CeldaBloque--${slug(c.estado)}`}
+                      title={`${c.codigo} · ${c.tipo} · ${c.estado}`}
+                    >
+                      {c.codigo}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="Card Tabla-wrap">

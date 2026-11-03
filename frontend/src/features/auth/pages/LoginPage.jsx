@@ -52,6 +52,7 @@ export default function LoginPage() {
           autoFocus
           autoComplete="username"
           required
+          placeholder="usuario"
         />
 
         <label htmlFor="clave">Clave</label>
@@ -63,6 +64,7 @@ export default function LoginPage() {
           onChange={cambiar}
           autoComplete="current-password"
           required
+          placeholder="clave"
         />
 
         {error && <p className="Login-error">{error}</p>}

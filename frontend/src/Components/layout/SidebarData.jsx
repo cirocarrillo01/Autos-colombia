@@ -3,11 +3,13 @@
  * Datos del sidebar: cada item tiene title, iconName (string), link y roles.
  * `roles` define quién lo ve.
  *
- * - Todos: Dashboard, Vehículo, Ingreso/Salida, Mensualidades.
- * - Solo administrador: Usuarios, Celdas.
+ * - Todos: Dashboard, Vehículo, Ingreso/Salida, Mensualidades, Celdas.
+ * - Solo administrador: Usuarios.
  *
- * NOTA: no existe un ítem "Reubicar" en el menú. La reubicación de vehículos
- * se hace desde la página de Celdas (botón ↻ en cada celda ocupada).
+ * NOTA: "Celdas" lo ven ambos roles, pero en la ruta /celdas se renderiza
+ * CeldasPage para administrador (escritura) y OperatorCeldasPage para
+ * operador (solo lectura). La reubicación de vehículos se hace desde
+ * CeldasPage (botón "Reubicar" en cada celda ocupada).
  */
 
 const TODOS = ["administrador", "operador"];
@@ -33,10 +35,11 @@ export const SidebarData = [
     link: "/mensualidad",
     roles: TODOS,
   },
+  // Ambos roles. En /celdas se resuelve admin vs operador.
+  { title: "Celdas", iconName: "cells", link: "/celdas", roles: TODOS },
 
   // Solo administrador
   { title: "Usuarios", iconName: "users", link: "/users", roles: ADMIN },
-  { title: "Celdas", iconName: "cells", link: "/celdas", roles: ADMIN },
 ];
 
 export default SidebarData;

@@ -12,8 +12,10 @@ import VistaVacia from "../pages/VistaVacia.jsx";
 import UserListPage from "../features/users/pages/UserListPage.jsx";
 import UserFormPage from "../features/users/pages/UserFormPage.jsx";
 import CeldasPage from "../features/celdas/pages/CeldasPage.jsx";
+import OperatorCeldasPage from "../features/celdas/pages/OperatorCeldasPage.jsx";
 
 const ADMIN = ["administrador"];
+const CELDAS_ROLES = ["administrador", "operador"];
 
 export default function AppRoutes() {
   const { rol } = useAuth();
@@ -63,14 +65,21 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+
+          {/* Celdas: el administrador escribe, el operador solo lee. */}
           <Route
             path="celdas"
             element={
-              <ProtectedRoute roles={ADMIN}>
-                <CeldasPage />
+              <ProtectedRoute roles={CELDAS_ROLES}>
+                {rol === "administrador" ? (
+                  <CeldasPage />
+                ) : (
+                  <OperatorCeldasPage />
+                )}
               </ProtectedRoute>
             }
           />
+
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>

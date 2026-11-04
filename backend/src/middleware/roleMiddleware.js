@@ -1,4 +1,4 @@
-// backend/src/middleware/roleMiddleware.js
+//backend/src/middleware/roleMiddleware.js
 // Autorización por rol: permite el paso solo si el usuario autenticado tiene uno
 // de los roles indicados. Debe usarse DESPUESE de autenticar.
 // Uso: router.get("/", autenticar, autorizarRoles("administrador"), controlador);

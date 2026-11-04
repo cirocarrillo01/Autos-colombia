@@ -1,6 +1,5 @@
-// frontend/src/features/celdas/pages/OperatorCeldasPage.jsx
-// El resumen (Total / Libres / Ocupadas / No disponibles) NO se muestra
-// siempre en la página: se abre en un Dialog al pulsar "Estado actual".
+//frontend/src/features/celdas/pages/OperatorCeldasPage.jsx
+// Vista de celdas para operadores (solo lectura y consulta de estado actual).
 import { useCallback, useState } from "react";
 import {
   listarCeldas,
@@ -70,18 +69,7 @@ export default function OperatorCeldasPage() {
     <div className="Page">
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Celdas</h2>
-        <span
-          className="Badge"
-          style={{ background: "#e3f2fd", color: "#1565c0" }}
-          title="El operador puede consultar pero no modificar celdas"
-        >
-          Solo lectura
-        </span>
       </div>
-      <p style={{ marginTop: 6, color: "#9e9e9e", fontSize: "0.85rem" }}>
-        Consulta de disponibilidad. Para crear, mantener o reubicar celdas,
-        solicita el apoyo de un administrador.
-      </p>
 
       {msg && <p className={`Msg Msg-${msg.tipo}`}>{msg.texto}</p>}
 

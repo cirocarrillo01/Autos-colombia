@@ -1,11 +1,11 @@
-// backend/src/config/db.js
-// Pool de conexiones MySQL (mysql2/promise) y helper query() con parametros (?).
+//backend/src/config/db.js
+// Pool de conexiones MySQL (mysql2/promise) y helper query() con parámetros (?).
 
 import { createPool } from "mysql2/promise";
 import { env } from "./envLoader.js";
 
 // Se usan campos sueltos y no una URL: mysql2 no decodifica bien las
-// contrasenas con caracteres especiales cuando van dentro de una URL.
+// contraseñas con caracteres especiales cuando van dentro de una URL.
 export const pool = createPool({
   host: env.DB_HOST,
   port: env.DB_PORT,
@@ -19,6 +19,13 @@ export const pool = createPool({
   timezone: "Z",
 });
 
+/**
+ * Ejecuta una consulta SQL parametrizada.
+ * @param {string} sql - Consulta con placeholders (?).
+ * @param {Array} params - Valores a interpolar.
+ * @returns {Promise<Array>} Filas resultantes.
+ * @throws {Error} Re-lanza el error con log de SQL y mensaje.
+ */
 export async function query(sql, params = []) {
   try {
     const [filas] = await pool.query(sql, params);

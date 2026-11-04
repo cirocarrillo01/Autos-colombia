@@ -1,4 +1,6 @@
-// frontend/src/features/celdas/pages/CeldasPage.jsx
+//frontend/src/features/celdas/pages/CeldasPage.jsx
+// Gestión completa de celdas (RF3): lista, bloques, mantenimiento, reubicación, CRUD.
+
 import { useCallback, useEffect, useState } from "react";
 import {
   listarCeldas,
@@ -11,6 +13,7 @@ import {
   obtenerCeldasDisponibles,
   listarAccesos,
   reubicarVehiculo,
+  resumenCeldas,
 } from "../../../services/api";
 import { usePolling } from "../../../hooks/usePolling";
 import {
@@ -21,12 +24,17 @@ import {
 } from "@mui/material";
 import "../../../pages/Gestion.css";
 
+import ResumenCeldas from "../../../Components/ResumenCeldas.jsx";
+
 const ESTADOS = ["libre", "ocupada", "en mantenimiento", "inactiva"];
 const LIMITE = 10;
 const slug = (s) => String(s ?? "").replace(/\s/g, "-");
 
-// Devuelve el tipo (o tipos) de vehículo presentes en un bloque.
-// Ej: "Carro", "Moto", "Mixto (Carro / Moto)" o "" si no hay celdas.
+/**
+ * Devuelve el tipo(s) de vehículo presentes en un bloque.
+ * @param {Array} celdas 
+ * @returns {string}
+ */
 const tipoBloque = (celdas = []) => {
   const tipos = [...new Set(celdas.map((c) => c.tipo).filter(Boolean))];
   if (tipos.length === 0) return "";
@@ -44,19 +52,24 @@ const PRESETS_MANTENIMIENTO = [
   { label: "1 día", horas: 24, minutos: 0 },
 ];
 
+/**
+ * Componente CeldasPage - Página principal de administración de celdas.
+ * Vistas: Lista (tabla paginada + filtros) y Por Bloques (visual).
+ * Acciones: Crear, Editar tipo, Mantenimiento (con duración), Activar/Inactivar,
+ * Eliminar (solo libre y sin historial), Reubicar vehículo (Dialog).
+ */
 export default function CeldasPage() {
   const [vista, setVista] = useState("lista");
   const [tipos, setTipos] = useState([]);
   const [filtros, setFiltros] = useState({ tipo: "", bloque: "", estado: "" });
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ rows: [], total: 0 });
-  const [bloques, setBloques] = useState([]);
+  const [resumen, setResumen] = useState(null);
   const [msg, setMsg] = useState(null);
+  const [bloques, setBloques] = useState([]);
+  const [estadoAbierto, setEstadoAbierto] = useState(false);
 
-  // ── Reubicación (ahora en Dialog) ───────────────────────────────────────
   const [reubicando, setReubicando] = useState(null);
-  // Estructura: { id_acceso, id_celda, codigo, placa, id_tipo_vehiculo, error }
-
   const [celdasDisponibles, setCeldasDisponibles] = useState([]);
   const [celdaDestino, setCeldaDestino] = useState(null);
   const [cargandoReb, setCargandoReb] = useState(false);
@@ -85,14 +98,19 @@ export default function CeldasPage() {
     enviando: false,
   });
 
+  /**
+   * Carga lista, bloques y resumen en paralelo.
+   */
   const cargar = useCallback(async () => {
     try {
-      const [lista, b] = await Promise.all([
+      const [lista, b, r] = await Promise.all([
         listarCeldas({ ...filtros, page, limit: LIMITE }),
         celdasPorBloque(),
+        resumenCeldas(),
       ]);
       setData(lista);
       setBloques(b);
+      setResumen(r);
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
     }
@@ -113,6 +131,12 @@ export default function CeldasPage() {
       .catch((e) => setMsg({ tipo: "error", texto: e.message }));
   }, []);
 
+  /**
+   * Ejecuta una acción asíncrona con mensaje de resultado.
+   * @param {Function} fn 
+   * @param {string} okTexto 
+   * @param {"ok"|"error"} tipoOk 
+   */
   const ejecutar = async (fn, okTexto, tipoOk = "ok") => {
     try {
       const r = await fn();
@@ -125,7 +149,6 @@ export default function CeldasPage() {
     }
   };
 
-  // ── Crear ───────────────────────────────────────────────────────────────
   const abrirCrear = () => {
     setCrearModal({
       abierto: true,
@@ -148,10 +171,7 @@ export default function CeldasPage() {
       return;
     }
     if (!crearModal.numero || Number(crearModal.numero) < 1) {
-      setCrearModal((m) => ({
-        ...m,
-        error: "El número debe ser mayor o igual a 1",
-      }));
+      setCrearModal((m) => ({ ...m, error: "El número debe ser mayor o igual a 1" }));
       return;
     }
     if (!crearModal.id_tipo_vehiculo) {
@@ -175,7 +195,6 @@ export default function CeldasPage() {
     }
   };
 
-  // ── Eliminar ────────────────────────────────────────────────────────────
   const abrirEliminar = (c) => {
     setEliminarModal({ abierto: true, celda: c, enviando: false });
   };
@@ -211,7 +230,6 @@ export default function CeldasPage() {
     }
   };
 
-  // ── Mantenimiento ───────────────────────────────────────────────────────
   const abrirMantenimiento = (c) => {
     setMantenimientoModal({
       abierto: true,
@@ -265,7 +283,6 @@ export default function CeldasPage() {
     abrirMantenimiento(c);
   };
 
-  // ── Reubicación (Dialog) ────────────────────────────────────────────────
   const abrirSelectorReubicacion = async (celda) => {
     try {
       const tipoCodigo = celda.tipo_codigo ?? celda.tipo;
@@ -318,7 +335,6 @@ export default function CeldasPage() {
       cancelarReubicacion();
       await cargar();
     } catch (e) {
-      // Mostrar el error dentro del propio Dialog para no cerrarlo.
       setReubicando((r) => (r ? { ...r, error: e.message } : null));
     } finally {
       setCargandoReb(false);
@@ -335,7 +351,6 @@ export default function CeldasPage() {
   const minutosTotales =
     (Number(mantenimientoModal.horas) || 0) * 60 +
     (Number(mantenimientoModal.minutos) || 0);
-  const finEstimado = new Date(Date.now() + minutosTotales * 60 * 1000);
 
   return (
     <div className="Page">
@@ -390,12 +405,51 @@ export default function CeldasPage() {
         )}
         <button
           className="Btn Btn--primary"
+          onClick={() => setEstadoAbierto(true)}
+        >
+          <span style={{ fontWeight: 600 }}>Estado actual</span>
+        </button>
+        <button
+          className="Btn Btn--primary"
           onClick={abrirCrear}
           style={{ marginLeft: "auto" }}
         >
           Crear celda
         </button>
       </div>
+
+      {/* ── Dialog: Estado actual ───────────────────────────────────── */}
+      <Dialog
+        open={estadoAbierto}
+        onClose={() => setEstadoAbierto(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Estado actual de las celdas</DialogTitle>
+        <DialogContent dividers>
+          {resumen ? (
+            <ResumenCeldas resumen={resumen} />
+          ) : (
+            <p style={{ color: "#9e9e9e", margin: 0 }}>Cargando resumen…</p>
+          )}
+          <p
+            style={{
+              marginTop: 16,
+              marginBottom: 0,
+              color: "#9e9e9e",
+              fontSize: "0.8rem",
+              textAlign: "right",
+            }}
+          >
+            Se actualiza automáticamente cada 30 s.
+          </p>
+        </DialogContent>
+        <DialogActions>
+          <button type="button" className="Btn Btn--primary" onClick={() => setEstadoAbierto(false)}>
+            Cerrar
+          </button>
+        </DialogActions>
+      </Dialog>
 
       {vista === "bloques" ? (
         <div className="Bloques">
@@ -740,7 +794,6 @@ export default function CeldasPage() {
               setCeldaDestino(
                 celdasDisponibles.find((d) => d.id_celda === id) ?? null,
               );
-              // Limpiar error previo al cambiar la selección
               setReubicando((r) => (r ? { ...r, error: "" } : null));
             }}
             style={{ width: "100%" }}
@@ -914,17 +967,25 @@ export default function CeldasPage() {
               }}
             >
               <strong>Se liberará:</strong>{" "}
-              {finEstimado.toLocaleDateString("es-CO", {
-                weekday: "short",
-                day: "2-digit",
-                month: "short",
-              })}{" "}
-              a las{" "}
-              {finEstimado.toLocaleTimeString("es-CO", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              ({minutosTotales} min en total)
+              {(() => {
+                const ahora = Date.now();
+                const fin = new Date(ahora + minutosTotales * 60 * 1000);
+                return (
+                  <>
+                    {fin.toLocaleDateString("es-CO", {
+                      weekday: "short",
+                      day: "2-digit",
+                      month: "short",
+                    })}{" "}
+                    a las{" "}
+                    {fin.toLocaleTimeString("es-CO", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    ({minutosTotales} min en total)
+                  </>
+                );
+              })()}
             </div>
           )}
 

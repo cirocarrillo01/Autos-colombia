@@ -1,4 +1,4 @@
-// backend/src/seeds/catalogoVehiculos.js
+//backend/src/seeds/catalogoVehiculos.js
 // Datos de apoyo del seed para la tabla `vehiculos`:
 //   - modelo        -> anio de lanzamiento (VARCHAR(4))
 //   - nombre_modelo -> nombre comercial (VARCHAR(50))

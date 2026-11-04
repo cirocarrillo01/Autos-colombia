@@ -1,6 +1,8 @@
-﻿// frontend/src/routes/AppRoutes.jsx
+﻿//frontend/src/routes/AppRoutes.jsx
+// Enrutador principal con Sidebar/Navbar y rutas protegidas por rol.
+
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "../features/auth/context/AuthContext";
+import { useAuth } from "../features/auth/context/AuthContextObject.js";
 import ProtectedRoute from "../Components/ProtectedRoute.jsx";
 import Sidebar from "../Components/layout/Sidebar.jsx";
 import Navbar from "../Components/layout/Navbar.jsx";
@@ -17,6 +19,10 @@ import OperatorCeldasPage from "../features/celdas/pages/OperatorCeldasPage.jsx"
 const ADMIN = ["administrador"];
 const CELDAS_ROLES = ["administrador", "operador"];
 
+/**
+ * Componente AppRoutes - Configuración de rutas de la aplicación.
+ * Incluye layout global (Sidebar + Navbar) y protección por rol.
+ */
 export default function AppRoutes() {
   const { rol } = useAuth();
 

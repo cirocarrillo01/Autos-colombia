@@ -1,4 +1,6 @@
-// frontend/src/pages/DashboardAdmin.jsx
+//frontend/src/pages/DashboardAdmin.jsx
+// Dashboard de administrador: resumen de celdas y accesos rápidos.
+
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/context/AuthContext";
@@ -7,12 +9,21 @@ import ResumenCeldas from "../Components/ResumenCeldas.jsx";
 import { usePolling } from "../hooks/usePolling";
 import "./Gestion.css";
 
+/**
+ * Componente DashboardAdmin - Panel principal para administradores.
+ * Muestra resumen de celdas (total/libres/ocupadas/no disponibles) y total de usuarios.
+ * Polling cada 30s para actualizar el resumen.
+ * Accesos rápidos: Usuarios, Celdas, Ingreso/Salida.
+ */
 export default function DashboardAdmin() {
   const { usuario } = useAuth();
   const [resumen, setResumen] = useState(null);
   const [totalUsuarios, setTotalUsuarios] = useState(null);
   const [error, setError] = useState("");
 
+  /**
+   * Carga resumen de celdas y total de usuarios.
+   */
   const cargar = useCallback(async () => {
     try {
       const [r, u] = await Promise.all([

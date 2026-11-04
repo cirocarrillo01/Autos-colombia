@@ -1,9 +1,5 @@
-// backend/src/middleware/authMiddleware.js
+//backend/src/middleware/authMiddleware.js
 // Autenticación JWT + autorización por estado de usuario.
-// - autenticar: valida el token Bearer, carga el usuario desde la BD y lo deja
-//   en req.user (id_usuario, usuario_login, rol, nombres, apellidos, nombreCompleto, estado).
-// - generarToken / verificarToken: helpers para firmar y validar JWT.
-// Se usa en las rutas que requieren sesión (usuarios, celdas, vehículos, movimientos).
 
 import { query } from "../config/db.js";
 import jwt from "jsonwebtoken";
@@ -21,8 +17,8 @@ if (!JWT_SECRET) {
 
 /**
  * Firma un payload y devuelve el token JWT.
- * @param {object} payload - Datos mínimos del usuario (no incluir datos sensibles).
- * @returns {string}
+ * @param {number|Object} payload - ID del usuario o datos para firmar.
+ * @returns {string} Token JWT firmado.
  */
 export const generarToken = (payload) => {
   const jti = crypto.randomUUID();
@@ -33,14 +29,18 @@ export const generarToken = (payload) => {
 
 /**
  * Verifica y decodifica un token JWT.
- * @param {string} token
- * @returns {object} payload decodificado
+ * @param {string} token 
+ * @returns {Object} Payload decodificado.
  */
 export const verificarToken = (token) => jwt.verify(token, JWT_SECRET);
 
 /**
  * Middleware de autenticación obligatoria.
- * Requiere header: Authorization: Bearer <token>
+ * Valida el token Bearer, carga el usuario y lo inyecta en req.user.
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ * @returns {Promise<void>}
  */
 export const autenticar = async (req, res, next) => {
   try {
@@ -104,7 +104,10 @@ export const autenticar = async (req, res, next) => {
 
 /**
  * Middleware opcional: si hay token válido carga el usuario, si no, continúa sin req.user.
- * Útil para rutas públicas que quieren personalizar si hay sesión.
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res 
+ * @param {import('express').NextFunction} next 
+ * @returns {Promise<void>}
  */
 export const opcional = async (req, res, next) => {
   try {
@@ -118,7 +121,7 @@ export const opcional = async (req, res, next) => {
       const decoded = verificarToken(partes[1]);
       const usuarios = await query(
         `SELECT id_usuario, usuario_login, rol, nombres, apellidos, email, telefono, estado, ultimo_acceso
-        FROM usuarios WHERE id_usuario = ?`,
+         FROM usuarios WHERE id_usuario = ?`,
         [decoded.id_usuario],
       );
       if (usuarios.length > 0 && usuarios[0].estado === "activo") {

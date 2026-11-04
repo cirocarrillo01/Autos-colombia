@@ -1,4 +1,4 @@
-﻿// backend/src/controllers/celdaController.js
+﻿//backend/src/controllers/celdaController.js
 // Gestión completa de celdas (RF3).
 //   GET    /api/celdas                 listar con filtros (tipo, bloque, estado) y paginación
 //   GET    /api/celdas/disponibles     celdas libres por tipo (para ingreso/salida)
@@ -13,8 +13,8 @@
 import { query } from "../config/db.js";
 
 /**
- * Deriva el estado de una celda en SQL:
- *   inactiva, en mantenimiento, ocupada (acceso abierto), asignada (celda fija de vehículo activo), libre.
+ * Libera las celdas cuyo tiempo de mantenimiento ha expirado basándose en UTC.
+ * @returns {Promise<void>}
  */
 async function liberarMantenimientosExpirados() {
   await query(
@@ -26,6 +26,10 @@ async function liberarMantenimientosExpirados() {
   );
 }
 
+/** 
+ * Fragmento SQL para determinar el estado actual de una celda.
+ * @type {string}
+ */
 const ESTADO_SQL = `
   CASE
     WHEN c.activa = FALSE THEN 'inactiva'
@@ -40,7 +44,9 @@ const ESTADO_SQL = `
 
 /**
  * GET /api/celdas - Listar celdas con filtros y paginación.
- * Filtros: tipo (carro|moto), bloque (letra), estado (libre|asignada|ocupada|en mantenimiento|inactiva).
+ * @param {import('express').Request} req - Query params: tipo, bloque, estado, page, limit.
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const listarCeldas = async (req, res) => {
   try {
@@ -75,7 +81,6 @@ export const listarCeldas = async (req, res) => {
           `EXISTS (SELECT 1 FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL)`,
         );
       } else if (e === "asignada") {
-        // Ya no existen celdas fijas, por lo que ninguna celda puede estar "asignada"
         conds.push(`1 = 0`);
       } else if (e === "libre") {
         conds.push(`c.activa = TRUE AND c.en_mantenimiento = FALSE
@@ -124,7 +129,8 @@ export const listarCeldas = async (req, res) => {
 
 /**
  * GET /api/celdas/disponibles - Celdas libres, opcionalmente por tipo.
- * (Mantiene el comportamiento original usado por ingreso/salida.)
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const obtenerCeldasDisponibles = async (req, res) => {
   try {
@@ -140,7 +146,6 @@ export const obtenerCeldasDisponibles = async (req, res) => {
           SELECT 1 FROM accesos_vehiculos a
           WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
         )
-        
     `;
     const params = [];
 
@@ -161,10 +166,13 @@ export const obtenerCeldasDisponibles = async (req, res) => {
 };
 
 /**
- * GET /api/celdas/:id - Obtener una celda por id con su estado derivado.
+ * GET /api/celdas/:id - Obtener una celda por id.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const obtenerCelda = async (req, res) => {
   try {
+    await liberarMantenimientosExpirados();
     const filas = await query(
       `SELECT c.id_celda, c.codigo, c.letra, c.numero, c.id_tipo_vehiculo,
               tv.nombre AS tipo, tv.codigo AS tipo_codigo,
@@ -192,8 +200,8 @@ export const obtenerCelda = async (req, res) => {
 
 /**
  * POST /api/celdas - Crear una celda.
- * RF3.1: letra (bloque), nñmero y tipo de vehñculo; el cñdigo (ej. A-01) se genera automñticamente.
- * RF3.2: impide celdas repetidas (letra + nñmero) y nñmeros menores a 1 (BD lo valida con CHECK).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const crearCelda = async (req, res) => {
   try {
@@ -280,7 +288,9 @@ export const crearCelda = async (req, res) => {
 };
 
 /**
- * PUT /api/celdas/:id - Editar el tipo de una celda solo si no tiene vehñculo asignado (RF3.8).
+ * PUT /api/celdas/:id - Editar el tipo de una celda.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const actualizarCelda = async (req, res) => {
   try {
@@ -292,17 +302,18 @@ export const actualizarCelda = async (req, res) => {
     }
 
     const [celda] = await query(
-      `SELECT id_celda FROM celdas WHERE id_celda = ?`,
+      `SELECT c.id_celda, c.id_tipo_vehiculo,
+              (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = c.id_celda AND m.fecha_salida IS NULL) AS ocupada
+       FROM celdas c WHERE c.id_celda = ?`,
       [req.params.id],
     );
     if (!celda) {
       return res.status(404).json({ error: "Celda no encontrada" });
     }
 
-    const [asignada] = [];
-    if (asignada) {
+    if (celda.ocupada > 0) {
       return res.status(400).json({
-        error: "No se puede cambiar el tipo de una celda con vehiculo asignado",
+        error: "No se puede cambiar el tipo de una celda ocupada",
       });
     }
 
@@ -312,6 +323,19 @@ export const actualizarCelda = async (req, res) => {
     );
     if (tipos.length === 0) {
       return res.status(400).json({ error: "Tipo de vehiculo invalido" });
+    }
+
+    if (celda.id_tipo_vehiculo !== id_tipo_vehiculo) {
+      const limiteMaximo = id_tipo_vehiculo === "carro" ? 70 : 10;
+      const [{ total }] = await query(
+        `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?`,
+        [id_tipo_vehiculo],
+      );
+      if (total >= limiteMaximo) {
+        return res.status(400).json({
+          error: `No se puede cambiar el tipo: se ha alcanzado la capacidad maxima de ${limiteMaximo} celdas para ${id_tipo_vehiculo}s.`,
+        });
+      }
     }
 
     await query(`UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?`, [
@@ -326,16 +350,18 @@ export const actualizarCelda = async (req, res) => {
 };
 
 /**
- * PATCH /api/celdas/:id/estado - Activar/inactivar o marcar en mantenimiento (RF3.7).
- *   body: { activo: boolean }  o  { en_mantenimiento: boolean }
- * RF3.7: no se permite marcar en mantenimiento o inactiva si estñ ocupada.
- *        Si estñ asignada, primero se reasigna el vehñculo.
+ * PATCH /api/celdas/:id/estado - Activar/inactivar o marcar en mantenimiento.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const cambiarEstadoCelda = async (req, res) => {
   try {
+    await liberarMantenimientosExpirados();
     const { activa, en_mantenimiento } = req.body ?? {};
     const [celda] = await query(
-      `SELECT id_celda, codigo, activa, en_mantenimiento FROM celdas WHERE id_celda = ?`,
+      `SELECT c.id_celda, c.codigo, c.activa, c.en_mantenimiento,
+              (SELECT COUNT(*) FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL) AS ocupada
+       FROM celdas c WHERE c.id_celda = ?`,
       [req.params.id],
     );
     if (!celda) {
@@ -390,13 +416,6 @@ export const cambiarEstadoCelda = async (req, res) => {
             "No se puede deshabilitar una celda ocupada. Registre la salida primero.",
         });
       }
-      const [asignada] = [];
-      if (asignada) {
-        return res.status(400).json({
-          error:
-            "La celda tiene un vehiculo asignado. Reasignelo o librelo antes de cambiar el estado.",
-        });
-      }
     }
 
     params.push(req.params.id);
@@ -414,7 +433,9 @@ export const cambiarEstadoCelda = async (req, res) => {
 };
 
 /**
- * DELETE /api/celdas/:id - Eliminar una celda (solo si no estñ ocupada, asignada ni tiene historial).
+ * DELETE /api/celdas/:id - Eliminar una celda.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
 export const eliminarCelda = async (req, res) => {
   try {
@@ -433,13 +454,6 @@ export const eliminarCelda = async (req, res) => {
       return res
         .status(400)
         .json({ error: "No se puede eliminar una celda ocupada" });
-    }
-
-    const [asignada] = [];
-    if (asignada) {
-      return res.status(400).json({
-        error: "No se puede eliminar una celda asignada a un vehiculo",
-      });
     }
 
     const [historial] = await query(
@@ -466,8 +480,9 @@ export const eliminarCelda = async (req, res) => {
 };
 
 /**
- * GET /api/celdas/resumen - Resumen de celdas por tipo (RF3.9).
- *   total, libres, asignadas, ocupadas y no disponibles (inactivas + mantenimiento).
+ * GET /api/celdas/resumen - Resumen de celdas por tipo.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
  */
 export const resumenCeldas = async (_req, res) => {
   try {
@@ -505,8 +520,9 @@ export const resumenCeldas = async (_req, res) => {
 };
 
 /**
- * GET /api/celdas/bloques - Celdas organizadas por bloques para vista visual (RF3.10).
- * (Agrupa en JS para evitar dependencias de JSON_ARRAYAGG segñn versiñn de MySQL.)
+ * GET /api/celdas/bloques - Celdas organizadas por bloques para vista visual.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
  */
 export const celdasPorBloque = async (_req, res) => {
   try {
@@ -546,7 +562,11 @@ export const celdasPorBloque = async (_req, res) => {
   }
 };
 
-/** GET /api/celdas/tipos - Tipos de vehñculo (para el formulario de crear celda). */
+/** 
+ * GET /api/celdas/tipos - Tipos de vehiculo (para el formulario de crear celda). 
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ */
 export const listarTipos = async (_req, res) => {
   try {
     res.json(
@@ -556,7 +576,7 @@ export const listarTipos = async (_req, res) => {
     );
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener los tipos de vehñculo" });
+    res.status(500).json({ error: "Error al obtener los tipos de vehiculo" });
   }
 };
 

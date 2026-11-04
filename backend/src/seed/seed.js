@@ -1,4 +1,4 @@
-﻿// backend/src/seeds/seed.js
+﻿//backend/src/seeds/seed.js
 // Datos iniciales para probar ingreso y salida (la base se crea antes con
 // Script/parqueadero.sql, que no se modifica).
 //

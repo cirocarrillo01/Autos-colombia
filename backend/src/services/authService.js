@@ -1,7 +1,6 @@
-﻿// backend/src/services/authService.js
+﻿//backend/src/services/authService.js
 // Lógica de negocio de autenticación: registro, login, cambio/restablecimiento de clave,
 // control de intentos fallidos (fuerza bruta) y registro de último acceso.
-// Usa bcryptjs para cifrar claves y jsonwebtoken para los tokens de acceso.
 
 import bcrypt from "bcryptjs";
 import { generarToken, verificarToken } from "../middleware/authMiddleware.js";
@@ -14,6 +13,11 @@ import { query } from "../config/db.js";
 const MAX_INTENTOS_FALLIDOS = 5;
 const VENTANA_INTENTOS_MINUTOS = 15;
 
+/**
+ * Obtiene la IP real del cliente.
+ * @param {import('express').Request} req 
+ * @returns {string} IP del cliente
+ */
 const obtenerIp = (req) => {
   const forwarded = req.headers["x-forwarded-for"];
   if (forwarded) return forwarded.split(",")[0].trim();
@@ -22,6 +26,12 @@ const obtenerIp = (req) => {
 
 const errorAuth = () => ({ status: 401, error: "Usuario o clave incorrectos" });
 
+/**
+ * Inicia sesión de un usuario.
+ * @param {import('express').Request} req 
+ * @param {Object} credentials - { usuario_login, clave }
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
+ */
 export const login = async (req, { usuario_login: loginCrudo, clave }) => {
   loginCrudo = String(loginCrudo ?? "")
     .trim()
@@ -87,7 +97,6 @@ export const login = async (req, { usuario_login: loginCrudo, clave }) => {
     return errorAuth();
   }
 
-  // Éxito: registramos intento exitoso, actualizamos último acceso y activamos sesión.
   await userRepository.registrarIntento({
     usuario_login: loginCrudo,
     exitoso: true,
@@ -125,24 +134,19 @@ export const login = async (req, { usuario_login: loginCrudo, clave }) => {
   };
 };
 
+/**
+ * Registra un nuevo usuario en el sistema.
+ * @param {Object} datos - Datos del usuario.
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
+ */
 export const registrar = async (datos) => {
   const {
-    rol,
-    tipo_documento,
-    documento,
-    nombres,
-    apellidos,
-    telefono,
-    email,
-    usuario_login,
-    clave,
+    rol, tipo_documento, documento, nombres,
+    apellidos, telefono, email, usuario_login, clave,
   } = datos;
 
   if (String(documento).length < 5 || String(documento).length > 20) {
-    return {
-      status: 400,
-      error: "El documento debe tener entre 5 y 20 caracteres",
-    };
+    return { status: 400, error: "El documento debe tener entre 5 y 20 caracteres" };
   }
   if (String(clave).length < 4) {
     return { status: 400, error: "La clave debe tener al menos 4 caracteres" };
@@ -156,10 +160,7 @@ export const registrar = async (datos) => {
   });
   if (duplicado) {
     let campo = "";
-    if (
-      duplicado.tipo_documento === tipo_documento &&
-      duplicado.documento === documento
-    )
+    if (duplicado.tipo_documento === tipo_documento && duplicado.documento === documento)
       campo = "documento";
     else if (duplicado.usuario_login === usuario_login)
       campo = "usuario de acceso";
@@ -173,15 +174,16 @@ export const registrar = async (datos) => {
   const clave_hash = await bcrypt.hash(String(clave), 10);
 
   const { insertId } = await userRepository.create({
-    rol,
-    tipo_documento,
-    documento,
-    nombres,
-    apellidos,
-    telefono,
-    email,
-    usuario_login,
-    clave_hash,
+    rol, tipo_documento, documento, nombres,
+    apellidos, telefono, email, usuario_login, clave_hash,
+  });
+
+  await auditRepository.registrarAudit({
+    id_usuario: insertId,
+    usuario_login: usuario_login,
+    accion: "CREATE_USER",
+    recurso: "usuarios",
+    detalle: `Usuario creado: ${usuario_login} (${rol})`,
   });
 
   const creado = await userRepository.findById(insertId);
@@ -198,7 +200,12 @@ export const registrar = async (datos) => {
   };
 };
 
-export const restablecerClave = async ({ idUsuario, claveNueva }) => {
+/**
+ * Restablece la clave de un usuario y revoca sesiones activas.
+ * @param {Object} params - { idUsuario, claveNueva, adminId }
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
+ */
+export const restablecerClave = async ({ idUsuario, claveNueva, adminId }) => {
   const usuario = await userRepository.findById(idUsuario);
   if (!usuario) {
     return { status: 404, error: "Usuario no encontrado" };
@@ -206,18 +213,36 @@ export const restablecerClave = async ({ idUsuario, claveNueva }) => {
 
   const clave_hash = await bcrypt.hash(String(claveNueva), 10);
   await userRepository.cambiarClave(idUsuario, clave_hash);
+
+  await refreshTokenRepository.revocarRefreshTokensUsuario(idUsuario);
+  await query(
+    `UPDATE usuarios SET sesion_activa = FALSE, fecha_sesion_activa = NULL WHERE id_usuario = ?`,
+    [idUsuario]
+  );
+
+  const admin = adminId ? await userRepository.findById(adminId) : null;
+  await auditRepository.registrarAudit({
+    id_usuario: adminId,
+    usuario_login: admin?.usuario_login ?? "sistema",
+    accion: "RESET_PASSWORD",
+    recurso: "usuarios",
+    detalle: `Clave restablecida y sesiones revocadas para ${usuario.usuario_login}`,
+    ip_address: "desconocida",
+  });
+
   return {
     status: 200,
     body: {
-      mensaje: `Clave restablecida para el usuario ${usuario.usuario_login}`,
+      mensaje: `Clave restablecida para el usuario ${usuario.usuario_login}. Sesiones activas cerradas.`,
     },
   };
 };
 
-// Re-autenticación: valida la clave del usuario identificado por usuario_login.
-// Se usa para confirmar que el administrador que realiza cambios en otros
-// usuarios (p. ej. restablecer clave o editar datos) sea quien está autenticado
-// y no una sesión dejada abierta.
+/**
+ * Valida la clave de un usuario dado (para re-autenticación administrativa).
+ * @param {Object} params - { usuario_login, clave }
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
+ */
 export const verificarClaveUsuario = async ({ usuario_login, clave }) => {
   const usuario = await userRepository.findByLogin(usuario_login);
   if (!usuario) return { status: 404, error: "Usuario no encontrado" };
@@ -226,6 +251,11 @@ export const verificarClaveUsuario = async ({ usuario_login, clave }) => {
   return { status: 200, body: { ok: true } };
 };
 
+/**
+ * Cierra sesión y revoca tokens.
+ * @param {Object} params - { idUsuario, token }
+ * @returns {Promise<{status: number, body: Object}>}
+ */
 export const logout = async ({ idUsuario, token }) => {
   const usuario = await userRepository.findById(idUsuario);
   if (token) {
@@ -257,6 +287,12 @@ export const logout = async ({ idUsuario, token }) => {
   });
   return { status: 200, body: { ok: true } };
 };
+
+/**
+ * Refresca el token de acceso.
+ * @param {Object} params - { refresh_token }
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
+ */
 export const refresh = async ({ refresh_token }) => {
   if (!refresh_token) {
     return { status: 400, error: "Refresh token requerido" };
@@ -265,7 +301,6 @@ export const refresh = async ({ refresh_token }) => {
   if (!row) {
     return { status: 401, error: "Refresh token inválido o expirado" };
   }
-  // Rotar: revocar el anterior y emitir uno nuevo
   await refreshTokenRepository.revocarRefreshToken(refresh_token);
   const newRefresh = await refreshTokenRepository.crearRefreshToken(
     row.id_usuario,

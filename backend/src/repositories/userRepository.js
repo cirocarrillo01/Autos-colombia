@@ -1,12 +1,12 @@
-﻿// backend/src/repositories/userRepository.js
+﻿//backend/src/repositories/userRepository.js
 // Acceso a datos de la tabla `usuarios`. Consultas SQL nativas con mysql2/promise.
-// No contiene lógica de negocio: solo operaciones CRUD y de auditoría de acceso.
 
 import { query } from "../config/db.js";
 
 /**
  * Busca un usuario por su usuario_login.
- * @returns {object|null}
+ * @param {string} usuario_login 
+ * @returns {Promise<Object|null>}
  */
 export const findByLogin = async (usuario_login) => {
   const filas = await query(
@@ -23,7 +23,8 @@ export const findByLogin = async (usuario_login) => {
 
 /**
  * Busca un usuario por id.
- * @returns {object|null}
+ * @param {number} id_usuario 
+ * @returns {Promise<Object|null>}
  */
 export const findById = async (id_usuario) => {
   const filas = await query(
@@ -39,9 +40,10 @@ export const findById = async (id_usuario) => {
 };
 
 /**
- * Verifica si ya existe un usuario con el mismo documento (por tipo),
- * usuario_login o correo, excluyendo un id opcional (para edición).
- * @returns {object|null} campo duplicado encontrado o null.
+ * Verifica si ya existe un usuario duplicado.
+ * @param {Object} datos - { tipo_documento, documento, usuario_login, email }
+ * @param {number|null} excludeId - ID a excluir de la búsqueda
+ * @returns {Promise<Object|null>}
  */
 export const findDuplicate = async (
   { tipo_documento, documento, usuario_login, email },
@@ -68,8 +70,9 @@ export const findDuplicate = async (
 };
 
 /**
- * Crea un nuevo usuario. La clave ya debe venir cifrada (clave_hash).
- * @returns {object} { insertId }
+ * Crea un nuevo usuario.
+ * @param {Object} datos 
+ * @returns {Promise<{insertId: number}>}
  */
 export const create = async (datos) => {
   const r = await query(
@@ -83,7 +86,7 @@ export const create = async (datos) => {
       datos.documento,
       datos.nombres,
       datos.apellidos,
-      datos.telefono || null, // "" → NULL (email tiene UNIQUE)
+      datos.telefono || null,
       datos.email || null,
       datos.usuario_login,
       datos.clave_hash,
@@ -94,8 +97,8 @@ export const create = async (datos) => {
 
 /**
  * Lista usuarios con búsqueda y filtros, paginados.
- * @param {object} opts - { search, rol, estado, page, limit }
- * @returns {object} { rows, total }
+ * @param {Object} opts - { search, rol, estado, page, limit }
+ * @returns {Promise<{rows: Array, total: number, page: number, limit: number}>}
  */
 export const listar = async ({
   search = "",
@@ -105,7 +108,7 @@ export const listar = async ({
   limit = 10,
 } = {}) => {
   const p = Number.parseInt(page, 10) || 1;
-  const l = Number.parseInt(limit, 10) || 10;
+  const l = Math.min(Number.parseInt(limit, 10) || 10, 100);
   const offset = (p - 1) * l;
 
   const conds = [];
@@ -149,22 +152,15 @@ export const listar = async ({
 };
 
 /**
- * Actualiza los datos de un usuario (sin tocar la clave).
- * Campos admitidos: rol, tipo_documento, documento, nombres, apellidos,
- * telefono, email, usuario_login, estado.
- * @returns {boolean} true si se actualizó al menos una fila.
+ * Actualiza los datos de un usuario.
+ * @param {number} id_usuario 
+ * @param {Object} campos 
+ * @returns {Promise<boolean>}
  */
 export const actualizar = async (id_usuario, campos) => {
   const permitidos = [
-    "rol",
-    "tipo_documento",
-    "documento",
-    "nombres",
-    "apellidos",
-    "telefono",
-    "email",
-    "usuario_login",
-    "estado",
+    "rol", "tipo_documento", "documento", "nombres",
+    "apellidos", "telefono", "email", "usuario_login", "estado",
   ];
   const sets = [];
   const params = [];
@@ -187,8 +183,10 @@ export const actualizar = async (id_usuario, campos) => {
 };
 
 /**
- * Activa o desactiva un usuario (soft delete).
- * @returns {boolean}
+ * Activa o desactiva un usuario.
+ * @param {number} id_usuario 
+ * @param {string} estado 
+ * @returns {Promise<boolean>}
  */
 export const cambiarEstado = async (id_usuario, estado) => {
   const sql =
@@ -200,8 +198,10 @@ export const cambiarEstado = async (id_usuario, estado) => {
 };
 
 /**
- * Cambia la clave de un usuario (ya cifrada).
- * @returns {boolean}
+ * Cambia la clave de un usuario.
+ * @param {number} id_usuario 
+ * @param {string} clave_hash 
+ * @returns {Promise<boolean>}
  */
 export const cambiarClave = async (id_usuario, clave_hash) => {
   const r = await query(
@@ -212,8 +212,9 @@ export const cambiarClave = async (id_usuario, clave_hash) => {
 };
 
 /**
- * Registra el último acceso exitoso de un usuario.
- * @returns {boolean}
+ * Registra el último acceso exitoso.
+ * @param {number} id_usuario 
+ * @returns {Promise<boolean>}
  */
 export const registrarUltimoAcceso = async (id_usuario) => {
   const r = await query(
@@ -224,8 +225,9 @@ export const registrarUltimoAcceso = async (id_usuario) => {
 };
 
 /**
- * Establece sesion_activa = TRUE y fecha_sesion_activa al iniciar sesión.
- * @returns {boolean}
+ * Establece sesión activa.
+ * @param {number} id_usuario 
+ * @returns {Promise<boolean>}
  */
 export const registrarSesionActiva = async (id_usuario) => {
   const r = await query(
@@ -236,20 +238,9 @@ export const registrarSesionActiva = async (id_usuario) => {
 };
 
 /**
- * Limpia el último acceso al cerrar sesión.
- * @returns {boolean}
- */
-export const limpiarUltimoAcceso = async (id_usuario) => {
-  const r = await query(
-    `UPDATE usuarios SET ultimo_acceso = NULL WHERE id_usuario = ?`,
-    [id_usuario],
-  );
-  return r.affectedRows > 0;
-};
-
-/**
- * Registra un intento de login en login_attempts.
- * @returns {object} { insertId }
+ * Registra un intento de inicio de sesión.
+ * @param {Object} datos - { usuario_login, exitoso, ip_address }
+ * @returns {Promise<{insertId: number}>}
  */
 export const registrarIntento = async ({
   usuario_login,
@@ -265,9 +256,9 @@ export const registrarIntento = async ({
 };
 
 /**
- * Cuenta intentos fallidos de un usuario_login y/o IP en una ventana de tiempo.
- * @param {object} opts - { usuario_login, ip_address, minutos }
- * @returns {number}
+ * Cuenta intentos fallidos recientes.
+ * @param {Object} opts - { usuario_login, ip_address, minutos }
+ * @returns {Promise<number>}
  */
 export const contarFallidosRecientes = async ({
   usuario_login = null,

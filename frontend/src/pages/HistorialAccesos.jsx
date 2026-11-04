@@ -1,4 +1,6 @@
-﻿// frontend/src/pages/HistorialAccesos.jsx
+﻿//frontend/src/pages/HistorialAccesos.jsx
+// Historial de accesos con filtros, paginación y polling 30s.
+
 import { useCallback, useEffect, useState } from "react";
 import { listarAccesos } from "../services/api";
 import { usePolling } from "../hooks/usePolling";
@@ -6,11 +8,21 @@ import "../pages/Gestion.css";
 
 const LIMITE = 20;
 
+/**
+ * Formatea fecha ISO a locale es-CO.
+ * @param {string|null} fecha
+ * @returns {string}
+ */
 function fmt(fecha) {
   if (!fecha) return "-";
   return new Date(fecha).toLocaleString("es-CO");
 }
 
+/**
+ * Componente HistorialAccesos - Página de consulta del historial de movimientos (RF5).
+ * Filtros: placa, celda, operador, estado (adentro/fuera), rango de fechas.
+ * Polling automático cada 30s.
+ */
 export default function HistorialAccesos() {
   const [filtros, setFiltros] = useState({
     placa: "",
@@ -24,6 +36,9 @@ export default function HistorialAccesos() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ rows: [], total: 0 });
 
+  /**
+   * Carga el historial con filtros aplicados y paginación.
+   */
   const cargar = useCallback(async () => {
     try {
       setData(await listarAccesos({ ...aplicados, page, limit: LIMITE }));
@@ -34,7 +49,7 @@ export default function HistorialAccesos() {
 
   usePolling(cargar, 30000);
 
-  // Debounce de filtros → aplicados (el polling reacciona al cambio de `cargar`)
+  // Debounce de filtros -> aplicados (el polling reacciona al cambio de `cargar`)
   useEffect(() => {
     const t = setTimeout(() => {
       setPage(1);

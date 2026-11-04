@@ -1,12 +1,18 @@
-// frontend/src/Components/ingreso-salida/FormularioSalida.jsx
-// Tarjeta "Salir". Vistas: idle -> resultado -> confirmado.
-import { useState, useRef, useEffect } from "react";
+//frontend/src/Components/ingreso-salida/FormularioSalida.jsx
+// Formulario de salida de vehículos: búsqueda y registro de salida.
+
+import { useState, useRef, useEffect, useCallback } from "react";
 import { buscarVehiculo, registrarMovimiento } from "../../services/api";
 import { validarPlaca } from "../../validators/placa";
 import AlertaPlaca from "./AlertaPlaca.jsx";
 import PanelVehiculo from "./PanelVehiculo.jsx";
 import PanelMovimiento from "./PanelMovimiento.jsx";
 
+/**
+ * Componente FormularioSalida - Tarjeta para registrar salida de vehículos.
+ * Flujo: idle (búsqueda) -> resultado (vehículo adentro) -> confirmado (movimiento registrado).
+ * Auto-limpia a los 35s de inactividad en vistas no-idle.
+ */
 export default function FormularioSalida() {
   const [placa, setPlaca] = useState("");
   const [vista, setVista] = useState("idle"); // idle | resultado | confirmado
@@ -16,22 +22,41 @@ export default function FormularioSalida() {
   const [alerta, setAlerta] = useState(null); // { tipo, mensaje }
   const timerRef = useRef(null);
 
-  const resetTimer = () => {
+  /**
+   * Limpia todo el formulario y vuelve a estado idle.
+   */
+  function handleLimpiar() {
+    setPlaca("");
+    setVehiculo(null);
+    setMovimiento(null);
+    setError("");
+    setAlerta(null);
+    setVista("idle");
+  }
+
+  /**
+   * Reinicia el temporizador de auto-limpieza (35s).
+   */
+  const resetTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (vista !== "idle" || alerta !== null) {
       timerRef.current = setTimeout(() => {
         handleLimpiar();
       }, 35000);
     }
-  };
+  }, [vista, alerta]);
 
   useEffect(() => {
     resetTimer();
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [vista, alerta]);
+  }, [vista, alerta, resetTimer]);
 
+  /**
+   * Busca el vehículo por placa y valida que esté adentro.
+   * Actualiza estado: vehiculo, vista, alerta.
+   */
   const handleBuscar = async () => {
     setError("");
     setAlerta(null);
@@ -69,6 +94,10 @@ export default function FormularioSalida() {
     }
   };
 
+  /**
+   * Registra el movimiento de salida en el backend.
+   * @returns {Promise<void>}
+   */
   const handleSalir = async () => {
     setError("");
     try {
@@ -81,15 +110,6 @@ export default function FormularioSalida() {
     } catch (err) {
       setError(err.message);
     }
-  };
-
-  const handleLimpiar = () => {
-    setPlaca("");
-    setVehiculo(null);
-    setMovimiento(null);
-    setError("");
-    setAlerta(null);
-    setVista("idle");
   };
 
   return (

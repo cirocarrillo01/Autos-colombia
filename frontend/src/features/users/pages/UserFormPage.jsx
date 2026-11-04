@@ -1,4 +1,6 @@
-// frontend/src/features/users/pages/UserFormPage.jsx
+//frontend/src/features/users/pages/UserFormPage.jsx
+// Formulario de creación y edición de usuarios (RF1.6).
+
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -21,6 +23,10 @@ const VACIO = {
   confirmarClave: "",
 };
 
+/**
+ * Componente UserFormPage - Formulario para registrar o actualizar datos de usuarios.
+ * Requiere re-autenticación del administrador (claveAdmin) para acciones de escritura.
+ */
 export default function UserFormPage() {
   const { id } = useParams();
   const editando = Boolean(id) && id !== "new" && !isNaN(Number(id));
@@ -28,8 +34,6 @@ export default function UserFormPage() {
   const [form, setForm] = useState(VACIO);
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  // Clave del admin: requerida para confirmar cambios sensibles al editar
-  // un usuario (el backend vuelve a validar esta clave).
   const [claveAdmin, setClaveAdmin] = useState("");
 
   useEffect(() => {
@@ -53,6 +57,10 @@ export default function UserFormPage() {
 
   const cambiar = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  /**
+   * Envía los datos del usuario al backend.
+   * @param {React.FormEvent} e 
+   */
   const enviar = async (e) => {
     e.preventDefault();
     setError("");
@@ -64,10 +72,11 @@ export default function UserFormPage() {
           return;
         }
         const { confirmarClave: _confirmar, ...datosRegistro } = form;
+        datosRegistro.claveAdmin = claveAdmin;
         await registrarUsuario(datosRegistro);
       } else {
-        const { clave: _clave, ...datos } = form; // la clave se restablece aparte
-        datos.claveAdmin = claveAdmin; // re-autenticación del admin
+        const { clave: _clave, ...datos } = form;
+        datos.claveAdmin = claveAdmin;
         await editarUsuario(id, datos);
       }
       navigate("/users");
@@ -153,6 +162,19 @@ export default function UserFormPage() {
                 required: true,
                 minLength: 4,
               })}
+              <div className="Field">
+                <label htmlFor="claveAdminCrear">Clave de administrador *</label>
+                <input
+                  id="claveAdminCrear"
+                  name="claveAdmin"
+                  className="Input"
+                  type="password"
+                  placeholder="Su clave para confirmar la creación"
+                  value={claveAdmin}
+                  onChange={(e) => setClaveAdmin(e.target.value)}
+                  required
+                />
+              </div>
             </>
           )}
         </div>

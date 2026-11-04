@@ -1,6 +1,5 @@
-// backend/src/middleware/validation.js
+//backend/src/middleware/validation.js
 // Helpers de validación de cuerpo de solicitud para las rutas de usuarios.
-// No se agregan nuevas dependencias: se valida de forma manual y clara.
 
 export const REQUIRED_USER_FIELDS = [
   "rol",
@@ -17,8 +16,9 @@ export const VALID_TIPOS_DOCUMENTO = ["cc", "ce", "nit", "pasaporte"];
 
 /**
  * Valida los campos obligatorios de un registro/actualización de usuario.
- * @param {object} body
- * @returns {null | string} null si es válido, mensaje de error si no.
+ * @param {Object} body 
+ * @param {Object} options - { requiereClave?: boolean }
+ * @returns {string|null} null si es válido, mensaje de error si no.
  */
 export const validarDatosUsuario = (body, { requiereClave = true } = {}) => {
   if (!body || typeof body !== "object") return "Cuerpo de solicitud inválido";
@@ -56,8 +56,8 @@ export const validarDatosUsuario = (body, { requiereClave = true } = {}) => {
 
 /**
  * Valida que una nueva clave cumpla el mínimo.
- * @param {string} clave
- * @returns {null | string}
+ * @param {string} clave 
+ * @returns {string|null}
  */
 export const validarClave = (clave) => {
   if (!clave || String(clave).length < 4) {

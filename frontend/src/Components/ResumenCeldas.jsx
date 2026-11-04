@@ -1,4 +1,6 @@
-// frontend/src/Components/ResumenCeldas.jsx
+//frontend/src/Components/ResumenCeldas.jsx
+// Componente de resumen: cards + tabla por tipo (total, libres, ocupadas, no disponibles).
+
 import "../pages/Gestion.css";
 
 const COLS = [
@@ -8,6 +10,13 @@ const COLS = [
   ["no_disponibles", "No disponibles"],
 ];
 
+/**
+ * Componente ResumenCeldas - Muestra estadísticas de celdas en cards y tabla por tipo.
+ * @param {Object} props
+ * @param {Object} props.resumen - Datos de resumen del backend.
+ * @param {Object} props.resumen.totales - { total, libres, ocupadas, no_disponibles }
+ * @param {Array} props.resumen.porTipo - Array de objetos por tipo de vehículo.
+ */
 export default function ResumenCeldas({ resumen }) {
   if (!resumen) return null;
   const { totales, porTipo } = resumen;

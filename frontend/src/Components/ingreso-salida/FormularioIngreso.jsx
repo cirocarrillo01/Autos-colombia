@@ -1,6 +1,7 @@
-// frontend/src/Components/ingreso-salida/FormularioIngreso.jsx
-// Tarjeta "Ingresar". Vistas: idle -> resultado -> confirmado.
-import { useState, useRef, useEffect } from "react";
+//frontend/src/Components/ingreso-salida/FormularioIngreso.jsx
+// Formulario de ingreso de vehículos: búsqueda, selección de celda y registro.
+
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   buscarVehiculo,
   obtenerCeldasDisponibles,
@@ -11,6 +12,11 @@ import AlertaPlaca from "./AlertaPlaca.jsx";
 import PanelVehiculo from "./PanelVehiculo.jsx";
 import PanelMovimiento from "./PanelMovimiento.jsx";
 
+/**
+ * Componente FormularioIngreso - Tarjeta para registrar ingreso de vehículos.
+ * Flujo: idle (búsqueda) -> resultado (vehículo + celdas) -> confirmado (movimiento registrado).
+ * Auto-limpia a los 35s de inactividad en vistas no-idle.
+ */
 export default function FormularioIngreso() {
   const [placa, setPlaca] = useState("");
   const [vista, setVista] = useState("idle"); // idle | resultado | confirmado
@@ -22,22 +28,43 @@ export default function FormularioIngreso() {
   const [alerta, setAlerta] = useState(null); // { tipo, mensaje }
   const timerRef = useRef(null);
 
-  const resetTimer = () => {
+  /**
+   * Limpia todo el formulario y vuelve a estado idle.
+   */
+  function handleLimpiar() {
+    setPlaca("");
+    setVehiculo(null);
+    setCeldas([]);
+    setCeldaSeleccionada(null);
+    setMovimiento(null);
+    setError("");
+    setAlerta(null);
+    setVista("idle");
+  }
+
+  /**
+   * Reinicia el temporizador de auto-limpieza (35s).
+   */
+  const resetTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (vista !== "idle" || alerta !== null) {
       timerRef.current = setTimeout(() => {
         handleLimpiar();
       }, 35000);
     }
-  };
+  }, [vista, alerta]);
 
   useEffect(() => {
     resetTimer();
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [vista, alerta]);
+  }, [vista, alerta, resetTimer]);
 
+  /**
+   * Busca el vehículo por placa y valida estado/mensualidad.
+   * Actualiza estado: vehiculo, celdas, vista, alerta.
+   */
   const handleBuscar = async () => {
     setError("");
     setAlerta(null);
@@ -100,6 +127,10 @@ export default function FormularioIngreso() {
     }
   };
 
+  /**
+   * Registra el movimiento de entrada en el backend.
+   * @returns {Promise<void>}
+   */
   const handleIngresar = async () => {
     if (!celdaSeleccionada) {
       setError("Selecciona una celda");
@@ -125,17 +156,6 @@ export default function FormularioIngreso() {
         setError(err.message);
       }
     }
-  };
-
-  const handleLimpiar = () => {
-    setPlaca("");
-    setVehiculo(null);
-    setCeldas([]);
-    setCeldaSeleccionada(null);
-    setMovimiento(null);
-    setError("");
-    setAlerta(null);
-    setVista("idle");
   };
 
   const bloqueado = alerta?.tipo === "ingreso-bloqueado";

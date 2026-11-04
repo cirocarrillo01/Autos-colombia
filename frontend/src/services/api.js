@@ -1,15 +1,35 @@
-// frontend/src/services/api.js
+//frontend/src/services/api.js
 // Cliente HTTP del backend con JWT y refresh automático.
+
 import { normalizarPlaca } from "../validators/placa";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api";
 const TOKEN_KEY = "ac_token";
 const REFRESH_KEY = "ac_refresh";
 
+/**
+ * Obtiene el access token del localStorage.
+ * @returns {string|null}
+ */
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
+
+/**
+ * Guarda o elimina el access token.
+ * @param {string|null} t 
+ */
 export const setToken = (t) =>
   t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
+
+/**
+ * Obtiene el refresh token del localStorage.
+ * @returns {string|null}
+ */
 export const getRefreshToken = () => localStorage.getItem(REFRESH_KEY);
+
+/**
+ * Guarda o elimina el refresh token.
+ * @param {string|null} t 
+ */
 export const setRefreshToken = (t) =>
   t
     ? localStorage.setItem(REFRESH_KEY, t)
@@ -31,10 +51,10 @@ const qs = (obj = {}) => {
 };
 
 /**
- * Intenta renovar el access token usando el refresh token guardado.
- * - Serializa las llamadas concurrentes: si 5 peticiones reciben 401 a la
- *   vez, solo se hace un POST /auth/refresh y las 5 esperan el mismo resultado.
- * - Lanza un error con `.status` para que el llamador decida si cerrar sesión.
+ * Intenta renovar el access token usando el refresh token.
+ * Serializa llamadas concurrentes para evitar múltiples refresh.
+ * @returns {Promise<string>} Nuevo access token.
+ * @throws {Error} Con propiedad .status (401, 403, 0).
  */
 let refreshEnCurso = null;
 
@@ -73,13 +93,21 @@ const refrescarAccessToken = () => {
   });
 };
 
-/** Limpia tokens y avisa a AuthContext. Solo para 401/403 reales. */
+/** Limpia tokens y dispara evento 'auth:expired' para AuthContext. */
 const limpiarSesion = () => {
   setToken(null);
   setRefreshToken(null);
   window.dispatchEvent(new Event("auth:expired"));
 };
 
+/**
+ * Función central de peticiones HTTP con auto-refresh de token.
+ * @param {string} url 
+ * @param {Object} opciones - Opciones de fetch.
+ * @param {boolean} auth - Si requiere Authorization header.
+ * @returns {Promise<Object>} Respuesta JSON.
+ * @throws {Error} Con propiedad .status.
+ */
 async function pedir(url, opciones = {}, auth = true) {
   const headers = { ...(opciones.headers || {}) };
   if (auth) {
@@ -94,15 +122,12 @@ async function pedir(url, opciones = {}, auth = true) {
     throw new Error("No se pudo conectar con el servidor");
   }
 
-  // 401 en ruta autenticada + hay refresh guardado → renovar y reintentar UNA vez.
   if (res.status === 401 && auth && getRefreshToken()) {
     try {
       const nuevoToken = await refrescarAccessToken();
       headers.Authorization = `Bearer ${nuevoToken}`;
       res = await fetch(url, { ...opciones, headers });
     } catch (refreshErr) {
-      // IMPORTANTE: un 429, 5xx o fallo de red en el refresh NO debe expulsar
-      // al usuario. Solo cerramos sesión si el refresh fue rechazado (401/403).
       if (refreshErr?.status === 401 || refreshErr?.status === 403) {
         limpiarSesion();
       }
@@ -146,30 +171,76 @@ export const logout = () => pedir(`${API}/auth/logout`, json("POST", {}), true);
 export const me = () => pedir(`${API}/auth/me`);
 
 // ---------- Usuarios (RF1) ----------
+/**
+ * @param {Object} opts - { search, rol, estado, page, limit }
+ * @returns {Promise<{rows: Array, total: number, page: number, limit: number}>}
+ */
 export const listarUsuarios = (opts) => pedir(`${API}/users${qs(opts)}`);
+
+/**
+ * @param {number} id 
+ * @returns {Promise<Object>}
+ */
 export const obtenerUsuario = (id) => pedir(`${API}/users/${id}`);
+
+/**
+ * @param {Object} datos - Datos del usuario + claveAdmin
+ * @returns {Promise<Object>}
+ */
 export const registrarUsuario = (datos) =>
   pedir(`${API}/auth/register`, json("POST", datos));
+
+/**
+ * @param {number} id 
+ * @param {Object} datos 
+ * @returns {Promise<Object>}
+ */
 export const editarUsuario = (id, datos) =>
   pedir(`${API}/users/${id}`, json("PUT", datos));
+
+/**
+ * @param {number} id 
+ * @param {string} estado - 'activo' | 'inactivo'
+ * @returns {Promise<Object>}
+ */
 export const cambiarEstadoUsuario = (id, estado) =>
   pedir(`${API}/users/${id}/estado`, json("PATCH", { estado }));
+
+/**
+ * @param {string} clave 
+ * @returns {Promise<Object>}
+ */
 export const verifyPassword = (clave) =>
   pedir(`${API}/auth/verify-password`, json("POST", { clave }));
+
+/**
+ * @param {number} id 
+ * @param {string} clave 
+ * @param {string} claveAdmin 
+ * @returns {Promise<Object>}
+ */
 export const restablecerClaveUsuario = (id, clave, claveAdmin) =>
   pedir(`${API}/users/${id}/password`, json("PATCH", { clave, claveAdmin }));
 
 // ---------- Vehículos (RF2) ----------
 export const listarVehiculos = (opts) => pedir(`${API}/vehiculos${qs(opts)}`);
+
+/**
+ * @param {string} placa 
+ * @returns {Promise<Object>}
+ */
 export const buscarVehiculo = (placa) =>
   pedir(`${API}/vehiculos/${encodeURIComponent(normalizarPlaca(placa))}`);
+
 export const crearVehiculo = (datos) =>
   pedir(`${API}/vehiculos`, json("POST", datos));
+
 export const actualizarVehiculo = (placa, datos) =>
   pedir(
     `${API}/vehiculos/${encodeURIComponent(normalizarPlaca(placa))}`,
     json("PUT", datos),
   );
+
 export const cambiarEstadoVehiculo = (placa, activo) =>
   pedir(
     `${API}/vehiculos/${encodeURIComponent(normalizarPlaca(placa))}/estado`,
@@ -183,6 +254,10 @@ export const obtenerCeldasDisponibles = (tipo) =>
 export const listarAccesos = (opts) =>
   pedir(`${API}/movimientos/historial${qs(opts)}`);
 
+/**
+ * @param {Object} params - { placa, celda?, tipo: 'entrada'|'salida' }
+ * @returns {Promise<Object>}
+ */
 export const registrarMovimiento = ({ placa, celda, tipo }) =>
   pedir(
     `${API}/movimientos/${tipo}`,

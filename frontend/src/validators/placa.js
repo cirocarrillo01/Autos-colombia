@@ -1,9 +1,7 @@
-// frontend/src/validators/placa.js
-// Espejo de backend/src/validators/placa.js: da respuesta inmediata al usuario
-// sin gastar una peticion.
-//   - Carro: 3 letras + 3 numeros          -> ABC123  (ABC-123)
-//   - Moto:  3 letras + 2 numeros + letra  -> ABC12C  (ABC-12C)
+//frontend/src/validators/placa.js
+// Espejo de backend/src/validators/placa.js: validación inmediata en cliente.
 
+/** @type {Object.<string, RegExp>} */
 export const FORMATOS_POR_TIPO = {
   carro: /^([A-Z]{3})-?([0-9]{3})$/,
   moto: /^([A-Z]{3})-?([0-9]{2})([A-Z])$/,
@@ -11,14 +9,23 @@ export const FORMATOS_POR_TIPO = {
 
 export const FORMATOS = [FORMATOS_POR_TIPO.carro, FORMATOS_POR_TIPO.moto];
 
-/** Normaliza una placa: mayusculas, sin espacios y sin guiones. */
+/**
+ * Normaliza una placa: mayúsculas, sin espacios ni guiones.
+ * @param {string} placa 
+ * @returns {string}
+ */
 export const normalizarPlaca = (placa) =>
   String(placa ?? "")
     .trim()
     .toUpperCase()
     .replace(/[\s-]/g, "");
 
-/** @returns {{ valida: boolean, placa: string, tipo: string|null, error: string|null }} */
+/**
+ * Valida una placa y devuelve objeto con detalles.
+ * @param {string} placa 
+ * @param {string|null} tipo - 'carro' | 'moto' | null
+ * @returns {{ valida: boolean, placa: string, tipo: string|null, error: string|null }}
+ */
 export const validarPlaca = (placa, tipo = null) => {
   const p = normalizarPlaca(placa);
   if (!p) {

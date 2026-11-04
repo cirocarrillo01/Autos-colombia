@@ -1,19 +1,15 @@
-// backend/src/controllers/movimientoController.js
-// POST  /api/movimientos/entrada          body: { placa, id_celda }
-// POST  /api/movimientos/salida           body: { placa }
-// PATCH /api/movimientos/:id_acceso/celda body: { id_celda }
-//
-// Todas las rutas requieren autenticación JWT (ver routes/movimientos.js).
-// La disponibilidad de una celda no se guarda en la tabla celdas: está
-// ocupada si existe un acceso con fecha_salida IS NULL. Los índices únicos
-// uq_acceso_vehiculo_dentro y uq_acceso_celda_ocupada impiden duplicados
-// incluso con peticiones simultáneas.
+//backend/src/controllers/movimientoController.js
+// Movimientos: entrada, salida, reubicación y consultas de historial (RF05).
+// Todas las rutas requieren autenticación JWT.
 
 import { pool } from "../config/db.js";
 import { validarPlaca } from "../validators/placa.js";
 
 const ZONA_HORARIA = "America/Bogota";
 
+/**
+ * Clase para errores de lógica de negocio específicos.
+ */
 class ErrorNegocio extends Error {
   constructor(status, mensaje) {
     super(mensaje);
@@ -21,6 +17,10 @@ class ErrorNegocio extends Error {
   }
 }
 
+/**
+ * Formatea fecha y hora según zona horaria de Colombia.
+ * @returns {{fecha: string, hora: string}}
+ */
 const fechaHoraActual = () => {
   const ahora = new Date();
   return {
@@ -33,7 +33,11 @@ const fechaHoraActual = () => {
   };
 };
 
-// #16: puerta activa se resuelve desde la BD, no hardcodeada a id=1.
+/**
+ * Obtiene la puerta activa actual.
+ * @param {import('mysql2/promise').Connection} conn 
+ * @returns {Promise<number>} ID de la puerta.
+ */
 async function puertaActiva(conn) {
   const [rows] = await conn.query(
     `SELECT id_puerta FROM puertas WHERE activa = TRUE
@@ -48,9 +52,12 @@ async function puertaActiva(conn) {
   return rows[0].id_puerta;
 }
 
-// #15: el operador viene SIEMPRE de req.user (middleware autenticar).
-// Antes existía un fallback al "primer usuario de la tabla" que podía
-// atribuir movimientos a un admin o a un usuario inactivo.
+/**
+ * Obtiene el operador y turno actual. Crea un nuevo turno si no existe uno abierto.
+ * @param {import('mysql2/promise').Connection} conn 
+ * @param {number|undefined} idUsuario 
+ * @returns {Promise<{idOperador: number, idTurno: number}>}
+ */
 async function operadorYTurno(conn, idUsuario) {
   if (!idUsuario) {
     throw new ErrorNegocio(
@@ -74,6 +81,11 @@ async function operadorYTurno(conn, idUsuario) {
   return { idOperador: idUsuario, idTurno: r.insertId };
 }
 
+/**
+ * Ejecuta un bloque de trabajo dentro de una transacción.
+ * @param {import('express').Response} res 
+ * @param {Function} trabajo - Función que recibe la conexión y realiza el trabajo.
+ */
 async function ejecutar(res, trabajo) {
   const conn = await pool.getConnection();
   try {
@@ -102,6 +114,11 @@ async function ejecutar(res, trabajo) {
   }
 }
 
+/**
+ * Registra un log de auditoría.
+ * @param {import('mysql2/promise').Connection} conn 
+ * @param {Object} data 
+ */
 async function auditar(conn, { idUsuario, login, accion, detalle, ip }) {
   try {
     await conn.query(
@@ -122,9 +139,11 @@ async function auditar(conn, { idUsuario, login, accion, detalle, ip }) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// ENTRADA
-// ---------------------------------------------------------------------------
+/**
+ * POST /api/movimientos/entrada - Registrar entrada de vehículo.
+ * @param {import('express').Request} req - Body: { placa, id_celda }.
+ * @param {import('express').Response} res
+ */
 export const registrarEntrada = (req, res) => {
   const { placa, id_celda } = req.body ?? {};
   if (!placa || !id_celda) {
@@ -162,6 +181,14 @@ export const registrarEntrada = (req, res) => {
     );
     if (dentro.length > 0)
       throw new ErrorNegocio(400, "El vehículo ya está adentro");
+
+    await conn.query(
+      `UPDATE celdas
+       SET en_mantenimiento = FALSE, mantenimiento_hasta = NULL
+       WHERE en_mantenimiento = TRUE
+         AND mantenimiento_hasta IS NOT NULL
+         AND mantenimiento_hasta <= UTC_TIMESTAMP()`,
+    );
 
     const [mensualidad] = await conn.query(
       `SELECT (fecha_fin >= DATE(UTC_TIMESTAMP() - INTERVAL 5 HOUR)) AS vigente
@@ -238,9 +265,11 @@ export const registrarEntrada = (req, res) => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// SALIDA
-// ---------------------------------------------------------------------------
+/**
+ * POST /api/movimientos/salida - Registrar salida de vehículo.
+ * @param {import('express').Request} req - Body: { placa }.
+ * @param {import('express').Response} res
+ */
 export const registrarSalida = (req, res) => {
   const { placa } = req.body ?? {};
   if (!placa) return res.status(400).json({ error: "Placa requerida" });
@@ -319,9 +348,11 @@ export const registrarSalida = (req, res) => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// REUBICACIÓN
-// ---------------------------------------------------------------------------
+/**
+ * PATCH /api/movimientos/:id_acceso/celda - Reubicar vehículo a otra celda.
+ * @param {import('express').Request} req - Params: id_acceso, Body: { id_celda }.
+ * @param {import('express').Response} res
+ */
 export const registrarReubicacion = async (req, res) => {
   const { id_acceso } = req.params ?? {};
   const { id_celda } = req.body ?? {};
@@ -329,6 +360,14 @@ export const registrarReubicacion = async (req, res) => {
   if (!id_celda) return res.status(400).json({ error: "Celda requerida" });
 
   return ejecutar(res, async (conn) => {
+    await conn.query(
+      `UPDATE celdas
+       SET en_mantenimiento = FALSE, mantenimiento_hasta = NULL
+       WHERE en_mantenimiento = TRUE
+         AND mantenimiento_hasta IS NOT NULL
+         AND mantenimiento_hasta <= UTC_TIMESTAMP()`,
+    );
+
     const [accesos] = await conn.query(
       `SELECT a.id_acceso, a.id_vehiculo, v.placa, v.id_tipo_vehiculo,
               co.codigo AS celda_origen
@@ -396,9 +435,11 @@ export const registrarReubicacion = async (req, res) => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// HISTORIAL
-// ---------------------------------------------------------------------------
+/**
+ * GET /api/movimientos/historial - Listar accesos con filtros y paginación.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
 export const listarAccesos = async (req, res) => {
   try {
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
@@ -500,4 +541,11 @@ export const listarAccesos = async (req, res) => {
       .status(500)
       .json({ error: "Error al consultar el historial de accesos" });
   }
+};
+
+export default {
+  registrarEntrada,
+  registrarSalida,
+  registrarReubicacion,
+  listarAccesos,
 };

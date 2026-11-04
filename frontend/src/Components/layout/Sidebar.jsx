@@ -1,7 +1,9 @@
-﻿// frontend/src/Components/layout/Sidebar.jsx
+﻿//frontend/src/Components/layout/Sidebar.jsx
+// Menú lateral con navegación filtrada por rol y botón de logout.
+
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../features/auth/context/AuthContext";
-import SidebarData from "./SidebarData.jsx";
+import SidebarData from "./SidebarData.js";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import CarRentalIcon from "@mui/icons-material/CarRental";
@@ -21,6 +23,12 @@ const ICONOS = {
   calendar: CalendarMonthIcon,
 };
 
+/**
+ * Componente Sidebar - Menú lateral responsivo filtrado por rol.
+ * @param {Object} props
+ * @param {string} props.rol - "administrador" | "operador"
+ * @returns {JSX.Element} Elemento aside con navegación y botón de logout.
+ */
 function Sidebar({ rol }) {
   const navigate = useNavigate();
   const { logout } = useAuth();

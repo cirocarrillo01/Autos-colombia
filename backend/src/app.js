@@ -1,5 +1,5 @@
-// backend/src/app.js
-// Configuracion de Express. La API usa autenticacion JWT (Bearer) en rutas protegidas.
+//backend/src/app.js
+// Configuración de Express. La API usa autenticación JWT (Bearer) en rutas protegidas.
 
 import express from "express";
 import cors from "cors";
@@ -15,20 +15,32 @@ if (env.TRUST_PROXY && env.TRUST_PROXY !== "0") {
   app.set("trust proxy", Number.isFinite(n) ? n : env.TRUST_PROXY);
 }
 
-// Headers de seguridad (CSP, HSTS, X-Frame-Options, etc.)
+// Headers de seguridad
 app.use(helmet());
 
-// CORS debe ir ANTES de rate limiting para que las preflight OPTIONS
-// reciban Access-Control-Allow-Origin sin ser bloqueadas por el limitador.
-app.use(cors({ origin: (origin, cb) => cb(null, true) }));
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:3000",
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("No permitido por CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  credentials: true
+}));
 app.use(express.json());
 
 const isDev = env.NODE_ENV === "development";
 
-// Rutas que el frontend consulta en POLLING (dashboards, listados, celdas, etc.).
-// Se excluyen del rate limit general para que la simple navegación no agote el
-// cupo. El backend ya protege estas rutas con JWT + roles; el rate limit sigue
-// aplicando a login, register, verify-password y demás mutaciones.
+// Rutas de polling que quedan excluidas del rate limit general.
 const POLLING_PATHS = [
   "/api/celdas",
   "/api/celdas/resumen",
@@ -39,20 +51,22 @@ const POLLING_PATHS = [
   "/api/users",
 ];
 
+/**
+ * Determina si una petición es de tipo polling.
+ * @param {import('express').Request} req 
+ * @returns {boolean}
+ */
 const esPolling = (req) => {
   const p = req.path;
   return POLLING_PATHS.some((base) => p === base || p.startsWith(base + "/"));
 };
 
-// Rate limiting global. En desarrollo se usa un límite más alto para evitar
-// 429 por recargas y por el doble montaje de React StrictMode.
+// Rate limiting global.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 2000 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  // No contar peticiones que ya fueron rechazadas (429, 4xx, 5xx): así la
-  // ventana se vacía aunque el cliente siga reintentando.
   skipFailedRequests: true,
   skip: (req) => req.path === "/api/health" || esPolling(req),
   handler: (_req, res) =>
@@ -62,17 +76,18 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Rate limiting más estricto para login (10 req / 15 min por IP).
+// Rate limiting específico para login contra ataques de fuerza bruta.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  skipFailedRequests: true,
+  skipSuccessfulRequests: true,
+  skipFailedRequests: false,
   handler: (_req, res) =>
     res
       .status(429)
-      .json({ error: "Demasiados intentos de login. Intenta más tarde." }),
+      .json({ error: "Demasiados intentos fallidos. Intenta más tarde." }),
 });
 app.use("/api/auth/login", loginLimiter);
 
@@ -81,7 +96,7 @@ app.use("/api", (_req, res) =>
   res.status(404).json({ error: "Ruta no encontrada" }),
 );
 
-// Manejador final: siempre responde JSON (Express 5 reenvía los errores async aquí)
+// Manejador final de errores global.
 app.use((err, _req, res, _next) => {
   console.error(err);
   const status = err.status ?? 500;

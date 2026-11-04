@@ -1,6 +1,17 @@
-// frontend/src/Components/ingreso-salida/PanelMovimiento.jsx
+//frontend/src/Components/ingreso-salida/PanelMovimiento.jsx
 // Comprobante del movimiento registrado (entrada o salida).
 
+/**
+ * Componente PanelMovimiento - Muestra el comprobante de un movimiento registrado.
+ * @param {Object} props
+ * @param {Object} props.movimiento - Datos del movimiento desde el backend.
+ * @param {number} props.movimiento.id
+ * @param {string} props.movimiento.placa
+ * @param {string} props.movimiento.accion - "ENTRADA" | "SALIDA"
+ * @param {string} props.movimiento.celda - Código de la celda
+ * @param {string} props.movimiento.fecha - Formato YYYY-MM-DD
+ * @param {string} props.movimiento.hora - Formato HH:mm:ss
+ */
 export default function PanelMovimiento({ movimiento }) {
   return (
     <div className="Movimiento-panel">

@@ -1,7 +1,9 @@
-// frontend/src/pages/VistaVacia.jsx
-// Vista vacia para las secciones del menu que aun no tienen contenido
-// (Dashboard, Vehiculo, Mensualidades). No altera el layout.
+//frontend/src/pages/VistaVacia.jsx
+// Componente de vista vacía para rutas en desarrollo.
 
+/**
+ * Componente VistaVacia - Retorna null para secciones temporales.
+ */
 export default function VistaVacia() {
   return null;
 }

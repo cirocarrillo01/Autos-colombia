@@ -61,10 +61,11 @@
 }
 
 /* Caja de búsqueda: crece con el espacio disponible pero nunca queda
-   más angosta que el placeholder para que no se recorte. */
+   más angosta que el placeholder para que no se recorte.
+   Estándar responsivo: base menor en pantallas pequeñas para evitar desbordamiento. */
 .Input--search {
   flex: 1 1 240px; /* crece, se encoge hasta 240px, base 240px */
-  min-width: 240px; /* nunca menos que el placeholder completo */
+  min-width: 200px; /* base reducida para mejor ajuste en pantallas intermedias */
 }
 
 .Btn {
@@ -320,6 +321,14 @@
   }
 }
 
+/* ================================================================
+   ESTÁNDAR DE RESPONSIVIDAD - BREAKPOINTS
+   - Mobile pequeño:  <= 480px
+   - Tablet / Mobile: <= 768px
+   - Desktop:         >  768px
+   ================================================================ */
+
+/* === TABLET / MÓVIL GRANDE (<= 768px) === */
 @media (max-width: 768px) {
   .Page {
     padding: 20px 12px;
@@ -328,6 +337,14 @@
   .Toolbar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+
+  /* El input de búsqueda ocupa todo el ancho pero sin min-width excesivo */
+  .Toolbar .Input--search {
+    width: 100%;
+    min-width: unset;
+    flex: unset;
   }
 
   .Toolbar .Input,
@@ -346,12 +363,45 @@
   .Paginacion {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 6px;
+  }
+
+  /* Botones de acción de tabla más compactos en tablet */
+  .Tabla-acciones .Btn--sm {
+    padding: 0 6px;
+    font-size: 0.8rem;
+    height: 28px;
+  }
+
+  .Badge {
+    min-width: 100px;
+    font-size: 0.75rem;
+    padding: 2px 8px;
   }
 }
 
+/* === MÓVIL PEQUEÑO (<= 480px) === */
 @media (max-width: 480px) {
   .Page {
     padding: 14px 8px;
+  }
+
+  .Page h2 {
+    font-size: 1.25rem;
+  }
+
+  .Toolbar {
+    gap: 8px;
+  }
+
+  .Toolbar .Btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+
+  .Tabla {
+    font-size: 0.78rem;
   }
 
   .Tabla th,
@@ -361,6 +411,23 @@
 
   .Btn--sm {
     padding: 0 8px;
+    font-size: 0.8rem;
+    height: 28px;
+  }
+
+  .Badge {
+    min-width: 90px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+  }
+
+  .Paginacion {
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .Paginacion .Btn {
+    padding: 0 10px;
     font-size: 0.8rem;
   }
 }

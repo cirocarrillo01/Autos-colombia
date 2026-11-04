@@ -1,14 +1,13 @@
-﻿// backend/src/services/userServices.js
+﻿//backend/src/services/userServices.js
 // Lógica de negocio de gestión de usuarios (RF1.5, RF1.6, RF1.7).
-// Solo el administrador puede listar con filtros, editar, cambiar rol y activar/desactivar.
 
 import * as userRepository from "../repositories/userRepository.js";
 import { validarDatosUsuario } from "../middleware/validation.js";
 
 /**
  * RF1.5 - Listar y buscar usuarios por nombre, documento, rol o estado (paginado).
- * @param {object} opts
- * @returns {object} { rows, total, page, limit }
+ * @param {Object} opts - Opciones de filtrado y paginación.
+ * @returns {Promise<{rows: Array, total: number, page: number, limit: number}>}
  */
 export const listarUsuarios = async (opts) => {
   const res = await userRepository.listar(opts);
@@ -24,7 +23,7 @@ export const listarUsuarios = async (opts) => {
 /**
  * Obtiene un usuario por su id (sin devolver la clave_hash).
  * @param {number} id_usuario
- * @returns {object} { status, body } o { status, error }
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
  */
 export const obtenerUsuario = async (id_usuario) => {
   const usuario = await userRepository.findById(id_usuario);
@@ -39,8 +38,8 @@ export const obtenerUsuario = async (id_usuario) => {
 /**
  * RF1.6 - Editar los datos de un usuario y cambiar su rol (solo administrador).
  * @param {number} id_usuario
- * @param {object} datos
- * @returns {object}
+ * @param {Object} datos
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
  */
 export const editarUsuario = async (id_usuario, datos) => {
   const errorValidacion = validarDatosUsuario(datos, { requiereClave: false });
@@ -53,7 +52,6 @@ export const editarUsuario = async (id_usuario, datos) => {
     return { status: 404, error: "Usuario no encontrado" };
   }
 
-  // RF1.2: validar unicidad excluyendo al propio usuario.
   const duplicado = await userRepository.findDuplicate(
     {
       tipo_documento: datos.tipo_documento,
@@ -90,7 +88,7 @@ export const editarUsuario = async (id_usuario, datos) => {
  * RF1.7 - Activar o desactivar un usuario sin eliminarlo (soft delete).
  * @param {number} id_usuario
  * @param {string} estado - 'activo' | 'inactivo'
- * @returns {object}
+ * @returns {Promise<{status: number, body?: Object, error?: string}>}
  */
 export const cambiarEstadoUsuario = async (id_usuario, estado) => {
   const existe = await userRepository.findById(id_usuario);

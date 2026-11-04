@@ -1,15 +1,23 @@
-// frontend/src/hooks/usePolling.js
-// Hook de polling "inteligente":
-//   - Ejecuta `callback` al montar y cada `intervalMs` ms.
-//   - Se PAUSA cuando la pestaña no está visible (document.visibilityState).
-//   - Se REANUDA y refresca al volver a la pestaña.
-//   - Dispara un refresco inmediato cuando cambia la identidad de `callback`
-//     (por ejemplo al cambiar de página o de filtros), sin esperar al intervalo.
-//   - Ignora silenciosamente errores del callback; cada componente ya maneja
-//     sus propios mensajes de error en su `catch`.
+//frontend/src/hooks/usePolling.js
+// Hook de polling inteligente con pausa por visibilidad y refresco inmediato al cambiar callback.
 
 import { useEffect, useRef } from "react";
 
+/**
+ * Hook de polling "inteligente" para actualización periódica de datos.
+ *
+ * Características:
+ * - Ejecuta `callback` al montar y cada `intervalMs` ms (default 30000).
+ * - Se PAUSA cuando la pestaña no está visible (document.visibilityState).
+ * - Se REANUDA y refresca al volver a la pestaña.
+ * - Dispara refresco inmediato cuando cambia la identidad de `callback`
+ *   (ej. cambio de página o filtros), sin esperar al intervalo.
+ * - Ignora silenciosamente errores del callback (cada componente maneja sus errores).
+ *
+ * @param {Function} callback - Función async a ejecutar periódicamente.
+ * @param {number} [intervalMs=30000] - Intervalo en milisegundos (default 30s).
+ * @returns {void}
+ */
 export function usePolling(callback, intervalMs = 30000) {
   const cbRef = useRef(callback);
 

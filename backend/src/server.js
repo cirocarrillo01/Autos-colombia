@@ -1,12 +1,14 @@
-// backend/src/server.js
-// Punto de entrada: verifica la conexion a MySQL y levanta Express.
-// Requisitos: base creada con Script/parqueadero.sql, datos de prueba con
-// `npm run seed` y backend/.env configurado.
+//backend/src/server.js
+// Punto de entrada: verifica la conexión a MySQL y levanta Express.
 
 import { env } from "./config/envLoader.js";
 import { pool } from "./config/db.js";
 import app from "./app.js";
 
+/**
+ * Función principal para iniciar el servidor.
+ * Verifica la BD y arranca Express.
+ */
 async function main() {
   try {
     await pool.query("SELECT 1");

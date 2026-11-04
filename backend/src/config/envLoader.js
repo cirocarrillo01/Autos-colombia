@@ -1,4 +1,4 @@
-// backend/src/config/envLoader.js
+//backend/src/config/envLoader.js
 // Lee backend/.env (sin dotenv), lo carga en process.env y exporta la
 // configuracion ya tipada. Si falta una variable obligatoria, el servidor
 // no arranca y muestra cual falta.
@@ -33,6 +33,12 @@ try {
   );
 }
 
+/**
+ * Convierte a número o devuelve un valor por defecto.
+ * @param {string|undefined} valor 
+ * @param {number} porDefecto 
+ * @returns {number}
+ */
 const numero = (valor, porDefecto) => {
   const n = parseInt(valor ?? "", 10);
   return Number.isFinite(n) ? n : porDefecto;
@@ -58,6 +64,10 @@ if (faltantes.length > 0) {
   process.exit(1);
 }
 
+/**
+ * Configuración tipada del entorno.
+ * @type {Object}
+ */
 export const env = {
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: numero(process.env.PORT, 3000),
@@ -67,8 +77,5 @@ export const env = {
   DB_PASSWORD: process.env.DB_PASSWORD ?? "",
   DB_NAME,
   CORS_ORIGIN: process.env.CORS_ORIGIN || "http://localhost:5173",
-  // Nº de proxies delante de la app (0 = ninguno). Detrás de Nginx o un
-  // load balancer se pone 1 (o el número que corresponda) para que
-  // req.ip refleje la IP real y el rate limiting funcione por cliente.
   TRUST_PROXY: process.env.TRUST_PROXY ?? "0",
 };

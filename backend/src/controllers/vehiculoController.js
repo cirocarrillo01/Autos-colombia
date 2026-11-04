@@ -1,18 +1,14 @@
-﻿// backend/src/controllers/vehiculoController.js
+﻿//backend/src/controllers/vehiculoController.js
 // Gestión de vehículos y propietarios (RF2).
-//   GET    /api/vehiculos              listar y buscar (placa, documento, nombre) con paginación
-//   GET    /api/vehiculos/:placa       obtener vehículo por placa (ya existente)
-//   POST   /api/vehiculos              registrar vehículo + propietario
-//   PUT    /api/vehiculos/:placa       editar datos del vehículo y del propietario
-//   PATCH  /api/vehiculos/:placa/estado desactivar vehículo (RF2.5: no si está dentro)
-//   PUT    /api/vehiculos/:placa/celda  asignar o reasignar celda fija (RF3.5, RF3.6)
-//   DELETE /api/vehiculos/:placa/celda  liberar la celda fija (RF3.6)
 
 import { query } from "../config/db.js";
 import { validarPlaca } from "../validators/placa.js";
 
 /**
- * GET /api/vehiculos/:placa - Devuelve lo que necesita la pantalla de ingreso/salida.
+ * GET /api/vehiculos/:placa - Devuelve información necesaria para la pantalla de ingreso/salida.
+ * @param {import('express').Request} req - Params: placa.
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const buscarVehiculoPorPlaca = async (req, res) => {
   try {
@@ -24,7 +20,6 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
     const [v] = await query(
       `SELECT v.id_vehiculo, v.placa, v.propietario_nombre,
               v.modelo, v.nombre_modelo, v.color,
-              
               tv.codigo AS tipo_codigo, tv.nombre AS tipo, tv.tarifa_mensual
        FROM vehiculos v
        INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = v.id_tipo_vehiculo
@@ -40,9 +35,6 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
       [v.id_vehiculo],
     );
 
-    // Estado derivado: fecha_fin vs HOY en Bogotá (UTC-5), consistente con
-    // movimientoController. Así un vehículo no aparece "En mora" 5 horas
-    // antes de que termine realmente su mensualidad en hora local.
     const [mensualidad] = await query(
       `SELECT (fecha_fin >= DATE(UTC_TIMESTAMP() - INTERVAL 5 HOUR)) AS vigente
        FROM mensualidades
@@ -66,7 +58,6 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
       modelo: v.modelo ?? "",
       nombreModelo: v.nombre_modelo ?? "",
       color: v.color ?? "",
-
       usuario: v.propietario_nombre,
       estadoMensualidad,
     });
@@ -78,8 +69,9 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
 
 /**
  * GET /api/vehiculos - Listar y buscar vehículos y propietarios.
- * Filtros: q (placa, documento o nombre), tipo, activo. Paginación.
- * RF2.3 - Consultar vehículos y propietarios por placa, documento o nombre.
+ * @param {import('express').Request} req - Query: q, tipo, activo, page, limit.
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const listarVehiculos = async (req, res) => {
   try {
@@ -143,60 +135,40 @@ export const listarVehiculos = async (req, res) => {
 };
 
 /**
- * POST /api/vehiculos - Registrar un vehículo con datos del propietario.
- * RF2.1 - placa, tipo, color, año, nombre modelo, propietario (nombre, tipo y número
- *         de documento, teléfono, correo).
- * RF2.2 - placa única y entre 5 y 8 caracteres (BD lo valida con CHECK y UNIQUE).
+ * POST /api/vehiculos - Registrar un vehículo.
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const crearVehiculo = async (req, res) => {
   try {
     const {
-      id_tipo_vehiculo,
-      placa,
-      color,
-      modelo,
-      nombre_modelo,
-      propietario_nombre,
-      propietario_tipo_documento,
-      propietario_documento,
-      propietario_telefono,
-      propietario_email,
+      id_tipo_vehiculo, placa, color, modelo, nombre_modelo,
+      propietario_nombre, propietario_tipo_documento,
+      propietario_documento, propietario_telefono, propietario_email,
     } = req.body ?? {};
 
     const formato = validarPlaca(placa);
-    if (!formato.valida) {
-      return res.status(400).json({ error: formato.error });
-    }
+    if (!formato.valida) return res.status(400).json({ error: formato.error });
 
     const obligatorios = [
-      id_tipo_vehiculo,
-      placa,
-      color,
-      modelo,
-      nombre_modelo,
-      propietario_nombre,
-      propietario_documento,
+      id_tipo_vehiculo, placa, color, modelo, nombre_modelo,
+      propietario_nombre, propietario_documento,
     ];
     if (obligatorios.some((v) => v === undefined || v === null || v === "")) {
       return res.status(400).json({
-        error:
-          "Todos los campos obligatorios del vehículo y propietario son requeridos",
+        error: "Todos los campos obligatorios del vehículo y propietario son requeridos",
       });
     }
 
-    // Verificar que el tipo de vehículo exista.
     const tipos = await query(
       `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
       [id_tipo_vehiculo],
     );
-    if (tipos.length === 0) {
-      return res.status(400).json({ error: "Tipo de vehículo inválido" });
-    }
-    // La placa debe corresponder al tipo elegido
+    if (tipos.length === 0) return res.status(400).json({ error: "Tipo de vehículo inválido" });
+    
     const formatoTipo = validarPlaca(placa, tipos[0].codigo);
-    if (!formatoTipo.valida) {
-      return res.status(400).json({ error: formatoTipo.error });
-    }
+    if (!formatoTipo.valida) return res.status(400).json({ error: formatoTipo.error });
 
     const r = await query(
       `INSERT INTO vehiculos
@@ -205,24 +177,15 @@ export const crearVehiculo = async (req, res) => {
           propietario_telefono, propietario_email, activo)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, TRUE)`,
       [
-        id_tipo_vehiculo,
-        formato.placa,
-        color,
-        modelo,
-        nombre_modelo,
-        propietario_nombre,
-        propietario_tipo_documento,
-        propietario_documento,
-        propietario_telefono ?? null,
-        propietario_email ?? null,
+        id_tipo_vehiculo, formato.placa, color, modelo, nombre_modelo,
+        propietario_nombre, propietario_tipo_documento, propietario_documento,
+        propietario_telefono ?? null, propietario_email ?? null,
       ],
     );
     res.status(201).json({ id_vehiculo: r.insertId, placa: formato.placa });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
-      return res
-        .status(409)
-        .json({ error: "Ya existe un vehículo con esa placa" });
+      return res.status(409).json({ error: "Ya existe un vehículo con esa placa" });
     }
     console.error(err);
     res.status(500).json({ error: "Error al registrar el vehículo" });
@@ -230,47 +193,34 @@ export const crearVehiculo = async (req, res) => {
 };
 
 /**
- * PUT /api/vehiculos/:placa - Editar los datos del vehículo y del propietario.
- * RF2.4.
+ * PUT /api/vehiculos/:placa - Editar datos del vehículo y del propietario.
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const actualizarVehiculo = async (req, res) => {
   try {
     const formato = validarPlaca(req.params.placa);
-    if (!formato.valida) {
-      return res.status(400).json({ error: formato.error });
-    }
+    if (!formato.valida) return res.status(400).json({ error: formato.error });
 
     const {
-      color,
-      modelo,
-      nombre_modelo,
-      propietario_nombre,
-      propietario_tipo_documento,
-      propietario_documento,
-      propietario_telefono,
-      propietario_email,
-      activo,
+      color, modelo, nombre_modelo, propietario_nombre,
+      propietario_tipo_documento, propietario_documento,
+      propietario_telefono, propietario_email, activo,
     } = req.body ?? {};
 
     const [v] = await query(
       `SELECT id_vehiculo FROM vehiculos WHERE placa = ? LIMIT 1`,
       [formato.placa],
     );
-    if (!v) {
-      return res.status(404).json({ error: "Vehículo no encontrado" });
-    }
+    if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
 
     const sets = [];
     const params = [];
     const mapeo = {
-      color,
-      modelo,
-      nombre_modelo,
-      propietario_nombre,
-      propietario_tipo_documento,
-      propietario_documento,
-      propietario_telefono,
-      propietario_email,
+      color, modelo, nombre_modelo, propietario_nombre,
+      propietario_tipo_documento, propietario_documento,
+      propietario_telefono, propietario_email,
     };
     for (const [campo, valor] of Object.entries(mapeo)) {
       if (valor !== undefined && valor !== null) {
@@ -282,15 +232,10 @@ export const actualizarVehiculo = async (req, res) => {
       sets.push(`activo = ?`);
       params.push(activo === true || activo === "true" ? 1 : 0);
     }
-    if (sets.length === 0) {
-      return res.status(400).json({ error: "No hay campos para actualizar" });
-    }
+    if (sets.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
 
     params.push(formato.placa);
-    await query(
-      `UPDATE vehiculos SET ${sets.join(", ")} WHERE placa = ?`,
-      params,
-    );
+    await query(`UPDATE vehiculos SET ${sets.join(", ")} WHERE placa = ?`, params);
     res.json({ mensaje: "Vehículo actualizado correctamente" });
   } catch (err) {
     console.error(err);
@@ -299,54 +244,39 @@ export const actualizarVehiculo = async (req, res) => {
 };
 
 /**
- * PATCH /api/vehiculos/:placa/estado - Desactivar un vehículo (RF2.5).
- * RF2.5: No se permite si el vehículo está dentro del parqueadero.
- * Al desactivarse, se libera su celda fija.
+ * PATCH /api/vehiculos/:placa/estado - Desactivar un vehículo.
+ * @param {import('express').Request} req 
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
  */
 export const cambiarEstadoVehiculo = async (req, res) => {
   try {
     const formato = validarPlaca(req.params.placa);
-    if (!formato.valida) {
-      return res.status(400).json({ error: formato.error });
-    }
+    if (!formato.valida) return res.status(400).json({ error: formato.error });
     const { activo } = req.body ?? {};
-    if (activo === undefined) {
-      return res.status(400).json({ error: "El campo activo es obligatorio" });
-    }
+    if (activo === undefined) return res.status(400).json({ error: "El campo activo es obligatorio" });
 
     const [v] = await query(
       `SELECT id_vehiculo FROM vehiculos WHERE placa = ? LIMIT 1`,
       [formato.placa],
     );
-    if (!v) {
-      return res.status(404).json({ error: "Vehículo no encontrado" });
-    }
+    if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
 
-    // RF2.5: no se permite desactivar si el vehículo está dentro del parqueadero.
     if (activo === false || activo === "false") {
       const [dentro] = await query(
-        `SELECT id_acceso FROM accesos_vehiculos
-         WHERE id_vehiculo = ? AND fecha_salida IS NULL LIMIT 1`,
+        `SELECT id_acceso FROM accesos_vehiculos WHERE id_vehiculo = ? AND fecha_salida IS NULL LIMIT 1`,
         [v.id_vehiculo],
       );
       if (dentro) {
         return res.status(400).json({
-          error:
-            "No se puede desactivar un vehículo que está dentro del parqueadero",
+          error: "No se puede desactivar un vehículo que está dentro del parqueadero",
         });
       }
-      // Liberar la celda fija al desactivar.
-      await query(`UPDATE vehiculos SET activo = FALSE WHERE placa = ?`, [
-        formato.placa,
-      ]);
-      return res.json({
-        mensaje: "Vehículo desactivado correctamente",
-      });
+      await query(`UPDATE vehiculos SET activo = FALSE WHERE placa = ?`, [formato.placa]);
+      return res.json({ mensaje: "Vehículo desactivado correctamente" });
     }
 
-    await query(`UPDATE vehiculos SET activo = TRUE WHERE placa = ?`, [
-      formato.placa,
-    ]);
+    await query(`UPDATE vehiculos SET activo = TRUE WHERE placa = ?`, [formato.placa]);
     res.json({ mensaje: "Vehículo activado correctamente" });
   } catch (err) {
     console.error(err);
@@ -355,26 +285,24 @@ export const cambiarEstadoVehiculo = async (req, res) => {
 };
 
 /**
- * PUT /api/vehiculos/:placa/celda
- * 410 Gone: la asignación de celdas fijas ya no existe en este sistema.
- * El parqueadero usa celdas rotativas; para mover un vehículo dentro del
- * parqueadero usa PATCH /api/movimientos/:id_acceso/celda (reubicación).
+ * PUT /api/vehiculos/:placa/celda - Obsoleto.
+ * @param {import('express').Request} _req 
+ * @param {import('express').Response} res
  */
 export const asignarCeldaFija = (_req, res) => {
   res.status(410).json({
-    error:
-      "La asignación de celdas fijas ya no está disponible. Use PATCH /api/movimientos/:id_acceso/celda para reubicar un vehículo dentro del parqueadero.",
+    error: "La asignación de celdas fijas ya no está disponible.",
   });
 };
 
 /**
- * DELETE /api/vehiculos/:placa/celda
- * 410 Gone: ver asignarCeldaFija.
+ * DELETE /api/vehiculos/:placa/celda - Obsoleto.
+ * @param {import('express').Request} _req 
+ * @param {import('express').Response} res
  */
 export const liberarCeldaFija = (_req, res) => {
   res.status(410).json({
-    error:
-      "La liberación de celdas fijas ya no está disponible. Use PATCH /api/movimientos/:id_acceso/celda para reubicar un vehículo dentro del parqueadero.",
+    error: "La liberación de celdas fijas ya no está disponible.",
   });
 };
 

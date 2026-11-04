@@ -1,7 +1,7 @@
-﻿// frontend/src/features/auth/context/AuthContext.jsx
+﻿//frontend/src/features/auth/context/AuthContext.jsx
+// Proveedor global de autenticación.
+
 import {
-  createContext,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -13,32 +13,18 @@ import {
   me,
   getToken,
   setToken,
-  getRefreshToken,
   setRefreshToken,
-  refreshToken as apiRefresh,
 } from "../../../services/api";
+import { guardarUsuario } from "./authUtils.js";
+import { AuthContext, useAuth } from "./AuthContextObject.js";
 
 const USER_KEY = "ac_user";
 
-const AuthContext = createContext({
-  isLoggedIn: false,
-  loading: false,
-  usuario: null,
-  rol: null,
-  error: null,
-  login: async () => {},
-  logout: () => {},
-  manejarError: () => null,
-  clearError: () => {},
-});
-
-export const useAuth = () => useContext(AuthContext);
-
-const guardarUsuario = (u) =>
-  u
-    ? localStorage.setItem(USER_KEY, JSON.stringify(u))
-    : localStorage.removeItem(USER_KEY);
-
+/**
+ * Proveedor de autenticación para toda la aplicación.
+ * @param {Object} props
+ * @param {React.ReactNode} props.children
+ */
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(() => {
     if (!getToken()) return null;
@@ -48,13 +34,17 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+  // loading es true solo si hay token; se setea false tras verificación async
   const [loading, setLoading] = useState(() => Boolean(getToken()));
   const [error, setError] = useState(null);
 
-  // Función para manejar errores HTTP con mensajes apropiados
+  /**
+   * Maneja errores HTTP y actualiza el estado de error.
+   * @param {Error & {status?: number}} error 
+   * @returns {string|null} Ruta a redirigir (ej. '/login') o null.
+   */
   const manejarError = useCallback((error) => {
     if (error.status === 401) {
-      // Sesión expirada o credenciales incorrectas
       setToken(null);
       localStorage.removeItem("ac_token");
       window.dispatchEvent(new Event("auth:expired"));
@@ -62,7 +52,7 @@ export function AuthProvider({ children }) {
         "Credenciales incorrectas. Por favor, inicie sesión nuevamente.",
       );
       setLoading(false);
-      return "/login"; // Indica que debe navegar al login
+      return "/login";
     } else if (error.status === 403) {
       setError("No tiene permiso para acceder a este recurso.");
       setLoading(false);
@@ -72,7 +62,6 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return null;
     } else if (error.status === 422) {
-      // Validación de datos - el error.message contiene los detalles
       setError(error.message || "Datos de validación incorrectos.");
       setLoading(false);
       return null;
@@ -81,7 +70,6 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return null;
     } else {
-      // Error genérico
       setError(error.message || "Error inesperado");
       setLoading(false);
       return null;
@@ -92,8 +80,9 @@ export function AuthProvider({ children }) {
 
   // Al cargar la app, valida el token y refresca los datos del usuario
   useEffect(() => {
-    if (!getToken()) {
-      setLoading(false);
+    const token = getToken();
+    if (!token) {
+      // Sin token: loading ya es false por inicialización perezosa
       return;
     }
     me()
@@ -111,7 +100,7 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Token vencido en cualquier petición → volver al login
+  // Token vencido en cualquier petición → limpiar sesión local
   useEffect(() => {
     const alExpirar = () => {
       guardarUsuario(null);
@@ -121,6 +110,12 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("auth:expired", alExpirar);
   }, []);
 
+  /**
+   * Inicia sesión del usuario.
+   * @param {string} usuario_login 
+   * @param {string} clave 
+   * @returns {Promise<Object>}
+   */
   const login = useCallback(async (usuario_login, clave) => {
     setError(null);
     const data = await apiLogin(usuario_login, clave);
@@ -131,15 +126,16 @@ export function AuthProvider({ children }) {
     return data.usuario;
   }, []);
 
+  /**
+   * Cierra sesión: notifica al backend y limpia estado local.
+   * @returns {Promise<void>}
+   */
   const logout = useCallback(async () => {
-    // 1. Intenta avisar al backend con los tokens aún vigentes para que
-    //    revoque el jti del access y todos los refresh del usuario.
     try {
       await apiLogout();
     } catch {
       // Ignorar errores del servidor en el logout.
     }
-    // 2. Limpieza local SIEMPRE, incluso si el servidor falló.
     guardarUsuario(null);
     setUsuario(null);
     setError(null);
@@ -165,4 +161,5 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export default AuthContext;
+export { useAuth };
+export default AuthProvider;

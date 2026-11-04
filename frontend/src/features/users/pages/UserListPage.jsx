@@ -1,4 +1,6 @@
-// frontend/src/features/users/pages/UserListPage.jsx
+//frontend/src/features/users/pages/UserListPage.jsx
+// Gestión de usuarios: listar, buscar, activar/desactivar, restablecer clave, crear/editar.
+
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/context/AuthContext";
@@ -19,6 +21,11 @@ import "../../../pages/Gestion.css";
 
 const LIMITE = 10;
 
+/**
+ * Componente UserListPage - Página principal de administración de usuarios (RF1.5-RF1.8).
+ * Permite listar, buscar, filtrar, paginar, activar/desactivar, restablecer claves,
+ * y abrir formularios de creación/edición (con re-autenticación admin).
+ */
 export default function UserListPage() {
   const { usuario } = useAuth();
   const navigate = useNavigate();
@@ -54,6 +61,9 @@ export default function UserListPage() {
     enviando: false,
   });
 
+  /**
+   * Carga la lista de usuarios con filtros y paginación.
+   */
   const cargar = useCallback(async () => {
     try {
       setData(await listarUsuarios({ ...aplicados, page, limit: LIMITE }));
@@ -70,9 +80,12 @@ export default function UserListPage() {
     setAplicados(filtros);
   };
 
-  // tipoOk permite elegir el estilo del mensaje de éxito.
-  // Se usa "error" para acciones destructivas (desactivar) para que se
-  // pinte en rojo como el resto de avisos destructivos de la app.
+  /**
+   * Ejecuta una acción asíncrona y maneja mensaje de éxito/error.
+   * @param {Function} fn - Función async a ejecutar.
+   * @param {string} okTexto - Texto en caso de éxito.
+   * @param {"ok"|"error"} tipoOk - Tipo de mensaje visual.
+   */
   const accion = async (fn, okTexto, tipoOk = "ok") => {
     try {
       await fn();
@@ -83,6 +96,10 @@ export default function UserListPage() {
     }
   };
 
+  /**
+   * Alterna el estado activo/inactivo de un usuario.
+   * @param {Object} u - Usuario.
+   */
   const alternarEstado = (u) => {
     const desactivando = u.estado === "activo";
     return accion(

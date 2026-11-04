@@ -1,9 +1,15 @@
-// frontend/src/features/auth/pages/LoginPage.jsx
+//frontend/src/features/auth/pages/LoginPage.jsx
+// Página de inicio de sesión (RF1.1, RF1.2).
+
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./LoginPage.css";
 
+/**
+ * Componente LoginPage - Formulario de autenticación.
+ * Redirige a /dashboard si ya hay sesión válida.
+ */
 export default function LoginPage() {
   const { isLoggedIn, loading, login, manejarError } = useAuth();
   const navigate = useNavigate();
@@ -15,6 +21,10 @@ export default function LoginPage() {
 
   const cambiar = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  /**
+   * Envía credenciales al backend y maneja la navegación.
+   * @param {React.FormEvent} e 
+   */
   const enviar = async (e) => {
     e.preventDefault();
     setEnviando(true);
@@ -28,8 +38,6 @@ export default function LoginPage() {
       }
       setError("Error en el login. Intente nuevamente.");
     } catch (err) {
-      // manejarError hace efectos secundarios (limpieza de tokens en 401),
-      // pero el mensaje al usuario se toma del error real del backend.
       manejarError(err);
       setError(err.message || "Error en el login");
     } finally {

@@ -318,7 +318,7 @@ export const actualizarCelda = async (req, res) => {
     }
 
     const tipos = await query(
-      `SELECT id_tipo_vehiculo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
+      `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
       [id_tipo_vehiculo],
     );
     if (tipos.length === 0) {
@@ -326,14 +326,14 @@ export const actualizarCelda = async (req, res) => {
     }
 
     if (celda.id_tipo_vehiculo !== id_tipo_vehiculo) {
-      const limiteMaximo = id_tipo_vehiculo === "carro" ? 70 : 10;
+      const limiteMaximo = tipos[0].codigo === "carro" ? 70 : 10;
       const [{ total }] = await query(
         `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?`,
         [id_tipo_vehiculo],
       );
       if (total >= limiteMaximo) {
         return res.status(400).json({
-          error: `No se puede cambiar el tipo: se ha alcanzado la capacidad maxima de ${limiteMaximo} celdas para ${id_tipo_vehiculo}s.`,
+          error: `No se puede cambiar el tipo: se ha alcanzado la capacidad maxima de ${limiteMaximo} celdas para ${tipos[0].codigo}s.`,
         });
       }
     }
@@ -346,6 +346,70 @@ export const actualizarCelda = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error al actualizar la celda" });
+  }
+};
+
+/**
+ * POST /api/celdas/intercambiar-tipo
+ * @description Intercambia los tipos de dos celdas libres de forma atómica.
+ */
+export const intercambiarTipoCelda = async (req, res) => {
+  const { id_celda_1, id_celda_2 } = req.body;
+
+  if (!id_celda_1 || !id_celda_2) {
+    return res.status(400).json({ error: "Ambos IDs de celda son obligatorios" });
+  }
+
+  try {
+    // 1. Obtener información de ambas celdas
+    const [c1, c2] = await Promise.all([
+      query(
+        `SELECT id_celda, id_tipo_vehiculo,
+                (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = celdas.id_celda AND m.fecha_salida IS NULL) AS ocupada
+         FROM celdas WHERE id_celda = ?`,
+        [id_celda_1],
+      ).then((r) => r[0]),
+      query(
+        `SELECT id_celda, id_tipo_vehiculo,
+                (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = celdas.id_celda AND m.fecha_salida IS NULL) AS ocupada
+         FROM celdas WHERE id_celda = ?`,
+        [id_celda_2],
+      ).then((r) => r[0]),
+    ]);
+
+    if (!c1 || !c2) {
+      return res.status(404).json({ error: "Una o ambas celdas no existen" });
+    }
+
+    if (c1.ocupada > 0 || c2.ocupada > 0) {
+      return res.status(400).json({ error: "No se pueden intercambiar tipos de celdas ocupadas" });
+    }
+
+    if (c1.id_tipo_vehiculo === c2.id_tipo_vehiculo) {
+      return res.status(400).json({ error: "Las celdas ya son del mismo tipo" });
+    }
+
+    // 2. Realizar el intercambio en una transacción
+    await query("START TRANSACTION");
+    try {
+      await query("UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?", [
+        c2.id_tipo_vehiculo,
+        c1.id_celda,
+      ]);
+      await query("UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?", [
+        c1.id_tipo_vehiculo,
+        c2.id_celda,
+      ]);
+      await query("COMMIT");
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+
+    res.json({ mensaje: "Intercambio de tipos realizado correctamente" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al realizar el intercambio" });
   }
 };
 

@@ -49,7 +49,16 @@
   align-items: center;
   margin-bottom: 16px;
 }
-.Input,
+.Input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #b0b0b0;
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+  box-sizing: border-box;
+}
+
 .Select {
   height: 36px;
   padding: 0 10px;
@@ -184,8 +193,8 @@
   color: #1565c0;
 }
 .Badge--ocupada {
-  background: #fff3e0;
-  color: #e65100;
+  background: #ffebee;
+  color: #c62828;
 }
 .Badge--en-mantenimiento {
   background: #fff9c4;
@@ -284,9 +293,9 @@
 }
 
 .CeldaBloque--ocupada {
-  background: #fff3e0;
-  color: #e65100;
-  border: 1px solid #ffcc80;
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
 }
 
 .CeldaBloque--en-mantenimiento {

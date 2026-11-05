@@ -284,5 +284,7 @@ export const crearCelda = (datos) =>
   pedir(`${API}/celdas`, json("POST", datos));
 export const editarTipoCelda = (id, id_tipo_vehiculo) =>
   pedir(`${API}/celdas/${id}`, json("PUT", { id_tipo_vehiculo }));
+export const intercambiarTipoCelda = (id1, id2) =>
+  pedir(`${API}/celdas/intercambiar-tipo`, json("POST", { id_celda_1: id1, id_celda_2: id2 }));
 export const cambiarEstadoCelda = (id, cambios) =>
   pedir(`${API}/celdas/${id}/estado`, json("PATCH", cambios));

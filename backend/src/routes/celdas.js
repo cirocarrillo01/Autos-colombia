@@ -45,6 +45,17 @@ router.get("/tipos", autenticar, celdaCtrl.listarTipos);
 router.get("/:id", autenticar, celdaCtrl.obtenerCelda);
 
 /**
+ * @route POST /api/celdas/intercambiar-tipo
+ * @description Intercambiar tipos entre dos celdas (solo admin)
+ */
+router.post(
+  "/intercambiar-tipo",
+  autenticar,
+  roleMiddleware.autorizarRoles("administrador"),
+  celdaCtrl.intercambiarTipoCelda,
+);
+
+/**
  * @route POST /api/celdas
  * @description Crear celda (solo admin)
  */

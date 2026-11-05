@@ -8,6 +8,7 @@ import {
   listarTiposVehiculo,
   crearCelda,
   editarTipoCelda,
+  intercambiarTipoCelda,
   cambiarEstadoCelda,
   eliminarCelda,
   obtenerCeldasDisponibles,
@@ -32,7 +33,7 @@ const slug = (s) => String(s ?? "").replace(/\s/g, "-");
 
 /**
  * Devuelve el tipo(s) de vehículo presentes en un bloque.
- * @param {Array} celdas 
+ * @param {Array} celdas
  * @returns {string}
  */
 const tipoBloque = (celdas = []) => {
@@ -98,6 +99,15 @@ export default function CeldasPage() {
     enviando: false,
   });
 
+  const [cambiarTipoModal, setCambiarTipoModal] = useState({
+    abierto: false,
+    celda: null,
+    celdaDestino: null,
+    celdasCandidatas: [],
+    error: "",
+    enviando: false,
+  });
+
   /**
    * Carga lista, bloques y resumen en paralelo.
    */
@@ -133,9 +143,9 @@ export default function CeldasPage() {
 
   /**
    * Ejecuta una acción asíncrona con mensaje de resultado.
-   * @param {Function} fn 
-   * @param {string} okTexto 
-   * @param {"ok"|"error"} tipoOk 
+   * @param {Function} fn
+   * @param {string} okTexto
+   * @param {"ok"|"error"} tipoOk
    */
   const ejecutar = async (fn, okTexto, tipoOk = "ok") => {
     try {
@@ -171,7 +181,10 @@ export default function CeldasPage() {
       return;
     }
     if (!crearModal.numero || Number(crearModal.numero) < 1) {
-      setCrearModal((m) => ({ ...m, error: "El número debe ser mayor o igual a 1" }));
+      setCrearModal((m) => ({
+        ...m,
+        error: "El número debe ser mayor o igual a 1",
+      }));
       return;
     }
     if (!crearModal.id_tipo_vehiculo) {
@@ -218,15 +231,54 @@ export default function CeldasPage() {
   };
 
   const cambiarTipo = (c) => {
-    const otro = tipos.find((t) => t.id_tipo_vehiculo !== c.id_tipo_vehiculo);
-    if (
-      otro &&
-      window.confirm(`¿Cambiar la celda ${c.codigo} a ${otro.nombre}?`)
-    ) {
-      ejecutar(
-        () => editarTipoCelda(c.id_celda, otro.id_tipo_vehiculo),
-        "Tipo actualizado",
-      );
+    // Buscar celdas del tipo contrario que estén libres
+    const todasLasCeldas = bloques.flatMap((b) => b.celdas);
+    const candidatas = todasLasCeldas.filter(
+      (cc) =>
+        cc.id_tipo_vehiculo !== c.id_tipo_vehiculo &&
+        cc.estado === "libre" &&
+        cc.id_celda !== c.id_celda,
+    );
+
+    setCambiarTipoModal({
+      abierto: true,
+      celda: c,
+      celdaDestino: null,
+      celdasCandidatas: candidatas,
+      error: "",
+      enviando: false,
+    });
+  };
+
+  const cerrarCambiarTipo = () =>
+    setCambiarTipoModal((m) => ({ ...m, abierto: false, error: "" }));
+
+  const confirmarCambiarTipo = async () => {
+    if (!cambiarTipoModal.celda || !cambiarTipoModal.celdaDestino) {
+      setCambiarTipoModal((m) => ({
+        ...m,
+        error: "Seleccione una celda destino para el intercambio",
+      }));
+      return;
+    }
+
+    setCambiarTipoModal((m) => ({ ...m, enviando: true, error: "" }));
+    try {
+      const { celda, celdaDestino } = cambiarTipoModal;
+
+      // Usamos el nuevo endpoint para evitar conflictos de límites
+      await intercambiarTipoCelda(celda.id_celda, celdaDestino.id_celda);
+
+      setMsg({
+        tipo: "ok",
+        texto: `Intercambio realizado: ${celda.codigo} ahora es ${celdaDestino.tipo} y ${celdaDestino.codigo} ahora es ${celda.tipo}`,
+      });
+      cerrarCambiarTipo();
+      cargar();
+    } catch (e) {
+      setCambiarTipoModal((m) => ({ ...m, enviando: false, error: e.message }));
+    } finally {
+      setCambiarTipoModal((m) => ({ ...m, enviando: false }));
     }
   };
 
@@ -445,7 +497,11 @@ export default function CeldasPage() {
           </p>
         </DialogContent>
         <DialogActions>
-          <button type="button" className="Btn Btn--primary" onClick={() => setEstadoAbierto(false)}>
+          <button
+            type="button"
+            className="Btn Btn--primary"
+            onClick={() => setEstadoAbierto(false)}
+          >
             Cerrar
           </button>
         </DialogActions>
@@ -752,6 +808,116 @@ export default function CeldasPage() {
             className="Btn"
             onClick={cerrarEliminar}
             disabled={eliminarModal.enviando}
+          >
+            Cancelar
+          </button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Dialog: Cambiar tipo de celda ───────────────────────────── */}
+      <Dialog
+        open={cambiarTipoModal.abierto}
+        onClose={cerrarCambiarTipo}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Intercambiar tipo de celda</DialogTitle>
+        <DialogContent dividers>
+          <p style={{ marginTop: 0 }}>
+            Se intercambiará el tipo de vehículo entre dos celdas libres.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <p
+                style={{
+                  margin: "0 0 4px",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                }}
+              >
+                Celda origen
+              </p>
+              <div
+                className="Card"
+                style={{ padding: "8px 12px", background: "#f5f5f5" }}
+              >
+                <strong>{cambiarTipoModal.celda?.codigo}</strong> (
+                {cambiarTipoModal.celda?.tipo})
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="celda-destino-swap"
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                }}
+              >
+                Celda destino (tipo contrario)
+              </label>
+              <select
+                id="celda-destino-swap"
+                className="Select"
+                style={{ width: "100%" }}
+                value={cambiarTipoModal.celdaDestino?.id_celda ?? ""}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  const destino = cambiarTipoModal.celdasCandidatas.find(
+                    (c) => c.id_celda === id,
+                  );
+                  setCambiarTipoModal((m) => ({
+                    ...m,
+                    celdaDestino: destino,
+                    error: "",
+                  }));
+                }}
+                disabled={cambiarTipoModal.enviando}
+              >
+                <option value="">Selecciona una celda...</option>
+                {cambiarTipoModal.celdasCandidatas.map((c) => (
+                  <option key={c.id_celda} value={c.id_celda}>
+                    {c.codigo} ({c.tipo})
+                  </option>
+                ))}
+              </select>
+              {cambiarTipoModal.celdasCandidatas.length === 0 && (
+                <p
+                  style={{ color: "#d32f2f", fontSize: "0.8rem", marginTop: 4 }}
+                >
+                  No hay celdas libres del tipo contrario para realizar el
+                  intercambio.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {cambiarTipoModal.error && (
+            <p className="Msg Msg-error" style={{ marginTop: 12 }}>
+              {cambiarTipoModal.error}
+            </p>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <button
+            type="button"
+            className="Btn Btn--primary"
+            onClick={confirmarCambiarTipo}
+            disabled={
+              cambiarTipoModal.enviando || !cambiarTipoModal.celdaDestino
+            }
+          >
+            {cambiarTipoModal.enviando
+              ? "Intercambiando…"
+              : "Realizar intercambio"}
+          </button>
+          <button
+            type="button"
+            className="Btn"
+            onClick={cerrarCambiarTipo}
+            disabled={cambiarTipoModal.enviando}
           >
             Cancelar
           </button>

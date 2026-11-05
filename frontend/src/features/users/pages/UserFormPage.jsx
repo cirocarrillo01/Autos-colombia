@@ -59,7 +59,7 @@ export default function UserFormPage() {
 
   /**
    * Envía los datos del usuario al backend.
-   * @param {React.FormEvent} e 
+   * @param {React.FormEvent} e
    */
   const enviar = async (e) => {
     e.preventDefault();
@@ -163,7 +163,9 @@ export default function UserFormPage() {
                 minLength: 4,
               })}
               <div className="Field">
-                <label htmlFor="claveAdminCrear">Clave de administrador *</label>
+                <label htmlFor="claveAdminCrear">
+                  Clave de administrador *
+                </label>
                 <input
                   id="claveAdminCrear"
                   name="claveAdmin"

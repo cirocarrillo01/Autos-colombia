@@ -30,7 +30,12 @@ export const SidebarData = [
     link: "/dashboard",
     roles: ROLES.TODOS,
   },
-  { title: "Vehículo", iconName: "vehicle", link: "/vehiculo", roles: ROLES.TODOS },
+  {
+    title: "Vehículo",
+    iconName: "vehicle",
+    link: "/vehiculo",
+    roles: ROLES.TODOS,
+  },
   {
     title: "Ingreso/Salida",
     iconName: "input",

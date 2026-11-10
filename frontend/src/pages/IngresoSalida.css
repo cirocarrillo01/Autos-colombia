@@ -414,4 +414,51 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
+/* ===== PANTALLA FLOTANTE: elegir vehículo ===== */
+.Selector-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.Selector-opcion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid #b0b0b0;
+  border-radius: 8px;
+  background: #ffffff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.Selector-opcion:hover:not(:disabled) {
+  background: #e3f2fd;
+  border-color: #1976d2;
+}
+
+.Selector-opcion:disabled {
+  background: #f5f5f5;
+  color: #9e9e9e;
+  cursor: not-allowed;
+}
+
+.Selector-titulo {
+  font-weight: 700;
+}
+
+.Selector-detalle {
+  font-size: 0.85rem;
+  color: #616161;
+}
+
+.Selector-motivo {
+  font-size: 0.8rem;
+  color: #c62828;
+  font-weight: 600;
+}
 

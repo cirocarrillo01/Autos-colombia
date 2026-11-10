@@ -13,7 +13,9 @@
 import { query } from "../config/db.js";
 
 /**
- * Libera las celdas cuyo tiempo de mantenimiento ha expirado basándose en UTC.
+ * @function liberarMantenimientosExpirados
+ * @description Proceso de limpieza que marca como libres las celdas cuyo tiempo programado de mantenimiento ha terminado.
+ * Compara la columna `mantenimiento_hasta` con el tiempo actual del servidor (UTC).
  * @returns {Promise<void>}
  */
 async function liberarMantenimientosExpirados() {
@@ -27,8 +29,10 @@ async function liberarMantenimientosExpirados() {
 }
 
 /** 
- * Fragmento SQL para determinar el estado actual de una celda.
+ * @constant ESTADO_SQL
  * @type {string}
+ * @description Fragmento de consulta SQL reutilizable para calcular el estado dinámico de una celda.
+ * Prioridad de estados: Inactiva > En mantenimiento > Ocupada > Libre.
  */
 const ESTADO_SQL = `
   CASE
@@ -43,10 +47,12 @@ const ESTADO_SQL = `
 `;
 
 /**
- * GET /api/celdas - Listar celdas con filtros y paginación.
- * @param {import('express').Request} req - Query params: tipo, bloque, estado, page, limit.
+ * @function listarCeldas
+ * @description Obtiene el listado completo de celdas con soporte para filtros de tipo, bloque y estado actual.
+ * Incluye información del ocupante si la celda está ocupada.
+ * @param {import('express').Request} req - Query params: { tipo, bloque, estado, page, limit }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
+ * @returns {Promise<void>} JSON con lista paginada de celdas.
  */
 export const listarCeldas = async (req, res) => {
   try {
@@ -128,8 +134,10 @@ export const listarCeldas = async (req, res) => {
 };
 
 /**
- * GET /api/celdas/disponibles - Celdas libres, opcionalmente por tipo.
- * @param {import('express').Request} req
+ * @function obtenerCeldasDisponibles
+ * @description Filtra celdas que están activas, sin mantenimiento y sin vehículo adentro.
+ * Se usa principalmente en el formulario de registro de ingreso.
+ * @param {import('express').Request} req - Query params: { tipo }.
  * @param {import('express').Response} res
  */
 export const obtenerCeldasDisponibles = async (req, res) => {
@@ -166,8 +174,9 @@ export const obtenerCeldasDisponibles = async (req, res) => {
 };
 
 /**
- * GET /api/celdas/:id - Obtener una celda por id.
- * @param {import('express').Request} req
+ * @function obtenerCelda
+ * @description Obtiene el detalle de una celda específica por su ID, incluyendo estado actual y ocupante.
+ * @param {import('express').Request} req - Params: id.
  * @param {import('express').Response} res
  */
 export const obtenerCelda = async (req, res) => {
@@ -199,9 +208,12 @@ export const obtenerCelda = async (req, res) => {
 };
 
 /**
- * POST /api/celdas - Crear una celda.
- * @param {import('express').Request} req
+ * @function crearCelda
+ * @description Registra una nueva celda en el sistema.
+ * Valida límites de capacidad física (Máx 70 carros / 10 motos).
+ * @param {import('express').Request} req - Body: { letra, numero, id_tipo_vehiculo }.
  * @param {import('express').Response} res
+ * @returns {Promise<void>} JSON con la celda creada (201).
  */
 export const crearCelda = async (req, res) => {
   try {
@@ -288,8 +300,10 @@ export const crearCelda = async (req, res) => {
 };
 
 /**
- * PUT /api/celdas/:id - Editar el tipo de una celda.
- * @param {import('express').Request} req
+ * @function actualizarCelda
+ * @description Modifica el tipo de vehículo permitido en una celda.
+ * Solo se permite si la celda está actualmente libre.
+ * @param {import('express').Request} req - Body: { id_tipo_vehiculo }.
  * @param {import('express').Response} res
  */
 export const actualizarCelda = async (req, res) => {
@@ -414,8 +428,10 @@ export const intercambiarTipoCelda = async (req, res) => {
 };
 
 /**
- * PATCH /api/celdas/:id/estado - Activar/inactivar o marcar en mantenimiento.
- * @param {import('express').Request} req
+ * @function cambiarEstadoCelda
+ * @description Gestiona el estado administrativo (Activa/Inactiva) y técnico (Mantenimiento).
+ * Si se marca mantenimiento, se debe especificar la duración. No se puede inactivar una celda ocupada.
+ * @param {import('express').Request} req - Body: { activa, en_mantenimiento, minutos_mantenimiento }.
  * @param {import('express').Response} res
  */
 export const cambiarEstadoCelda = async (req, res) => {
@@ -497,8 +513,10 @@ export const cambiarEstadoCelda = async (req, res) => {
 };
 
 /**
- * DELETE /api/celdas/:id - Eliminar una celda.
- * @param {import('express').Request} req
+ * @function eliminarCelda
+ * @description Elimina físicamente una celda.
+ * Solo se permite si la celda no está ocupada y nunca ha tenido historial de accesos registrados (integridad referencial).
+ * @param {import('express').Request} req - Params: id.
  * @param {import('express').Response} res
  */
 export const eliminarCelda = async (req, res) => {
@@ -544,7 +562,9 @@ export const eliminarCelda = async (req, res) => {
 };
 
 /**
- * GET /api/celdas/resumen - Resumen de celdas por tipo.
+ * @function resumenCeldas
+ * @description Genera estadísticas agregadas del estado de las celdas (totales, libres, ocupadas, no disponibles).
+ * Utilizado para los dashboards de administrador y operador.
  * @param {import('express').Request} _req
  * @param {import('express').Response} res
  */
@@ -584,7 +604,9 @@ export const resumenCeldas = async (_req, res) => {
 };
 
 /**
- * GET /api/celdas/bloques - Celdas organizadas por bloques para vista visual.
+ * @function celdasPorBloque
+ * @description Obtiene todas las celdas agrupadas por su letra de bloque (A, B, C...).
+ * Optimizado para la representación visual tipo mapa en el frontend.
  * @param {import('express').Request} _req
  * @param {import('express').Response} res
  */
@@ -627,7 +649,9 @@ export const celdasPorBloque = async (_req, res) => {
 };
 
 /** 
- * GET /api/celdas/tipos - Tipos de vehiculo (para el formulario de crear celda). 
+ * @function listarTipos
+ * @description Obtiene los tipos de vehículos activos en el sistema (ej. Carro, Moto) con sus tarifas base.
+ * Usado para llenar desplegables en la interfaz gráfica.
  * @param {import('express').Request} _req
  * @param {import('express').Response} res
  */

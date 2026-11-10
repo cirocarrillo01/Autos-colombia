@@ -3,12 +3,25 @@
 // Todas las rutas requieren autenticación JWT.
 
 import { pool } from "../config/db.js";
-import { validarPlaca } from "../validators/placa.js";
+import { validarPlaca, normalizarPlaca } from "../validators/placa.js";
+import { SQL_ULTIMA_MENSUALIDAD } from "../utils/mensualidad.js";
 
 const ZONA_HORARIA = "America/Bogota";
 
+const MSG = {
+  YA_DENTRO: "El vehículo ya se encuentra dentro del parqueadero",
+  NO_DENTRO: "El vehículo no se encuentra en el parqueadero",
+  CELDA_NO_DISPONIBLE: "La celda ya no está disponible",
+  MENSUALIDAD_MORA: "La mensualidad del vehículo está en mora",
+  MENSUALIDAD_PENDIENTE: "La mensualidad del vehículo aún no inicia",
+  SIN_MENSUALIDAD: "El vehículo no tiene mensualidad activa",
+};
+
 /**
- * Clase para errores de lógica de negocio específicos.
+ * @class ErrorNegocio
+ * @extends Error
+ * @description Clase para manejar errores controlados de lógica de negocio (4xx/5xx).
+ * @property {number} status - Código de estado HTTP.
  */
 class ErrorNegocio extends Error {
   constructor(status, mensaje) {
@@ -18,8 +31,9 @@ class ErrorNegocio extends Error {
 }
 
 /**
- * Formatea fecha y hora según zona horaria de Colombia.
- * @returns {{fecha: string, hora: string}}
+ * @function fechaHoraActual
+ * @description Genera la fecha y hora actual formateada para la zona horaria de Colombia.
+ * @returns {{fecha: string, hora: string}} Objeto con fecha (DD/MM/AAAA) y hora (HH:mm).
  */
 const fechaHoraActual = () => {
   const ahora = new Date();
@@ -33,10 +47,25 @@ const fechaHoraActual = () => {
   };
 };
 
+const formatearFechaHora = (d) => ({
+  fecha: new Date(d).toLocaleDateString("es-CO", { timeZone: ZONA_HORARIA }),
+  hora: new Date(d).toLocaleTimeString("es-CO", {
+    timeZone: ZONA_HORARIA, hour: "2-digit", minute: "2-digit",
+  }),
+});
+
+const formatearPermanencia = (min) => {
+  const m = Math.max(Number(min) || 0, 0);
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), r = m % 60;
+  return [d && `${d} d`, (d || h) && `${h} h`, `${r} min`].filter(Boolean).join(" ");
+};
+
 /**
- * Obtiene la puerta activa actual.
- * @param {import('mysql2/promise').Connection} conn 
- * @returns {Promise<number>} ID de la puerta.
+ * @function puertaActiva
+ * @description Consulta en la base de datos la primera puerta marcada como activa.
+ * @param {import('mysql2/promise').Connection} conn - Conexión de base de datos activa.
+ * @throws {ErrorNegocio} Si no hay ninguna puerta activa configurada (500).
+ * @returns {Promise<number>} ID de la puerta activa.
  */
 async function puertaActiva(conn) {
   const [rows] = await conn.query(
@@ -53,9 +82,11 @@ async function puertaActiva(conn) {
 }
 
 /**
- * Obtiene el operador y turno actual. Crea un nuevo turno si no existe uno abierto.
- * @param {import('mysql2/promise').Connection} conn 
- * @param {number|undefined} idUsuario 
+ * @function operadorYTurno
+ * @description Resuelve el operador y busca un turno abierto para él. Si no existe, lo crea.
+ * @param {import('mysql2/promise').Connection} conn - Conexión de base de datos activa.
+ * @param {number|undefined} idUsuario - ID del usuario autenticado.
+ * @throws {ErrorNegocio} Si no hay sesión de usuario (401).
  * @returns {Promise<{idOperador: number, idTurno: number}>}
  */
 async function operadorYTurno(conn, idUsuario) {
@@ -82,11 +113,34 @@ async function operadorYTurno(conn, idUsuario) {
 }
 
 /**
- * Ejecuta un bloque de trabajo dentro de una transacción.
- * @param {import('express').Response} res 
- * @param {Function} trabajo - Función que recibe la conexión y realiza el trabajo.
+ * Registra un intento rechazado FUERA de la transacción para que el rollback no lo borre.
  */
-async function ejecutar(res, trabajo) {
+async function auditarRechazo(req, { accion, placa }, motivo) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_log
+         (id_usuario, usuario_login, accion, recurso, detalle, ip_address)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        req.user?.id_usuario ?? null,
+        req.user?.usuario_login ?? null,
+        `${accion}_rechazada`,
+        "accesos_vehiculos",
+        `Placa ${placa || "N/D"}: ${motivo}`,
+        req.ip ?? "desconocida",
+      ],
+    );
+  } catch (err) {
+    console.error("Error al auditar rechazo:", err);
+  }
+}
+
+/**
+ * @function ejecutar
+ * @description Wrapper para ejecutar operaciones dentro de una transacción gestionada.
+ * Maneja el commit, rollback automático y centraliza la respuesta de errores.
+ */
+async function ejecutar(req, res, trabajo, ctx = {}) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -100,12 +154,14 @@ async function ejecutar(res, trabajo) {
       /* conexión ya cerrada */
     }
     if (err instanceof ErrorNegocio) {
+      await auditarRechazo(req, ctx, err.message);
       return res.status(err.status).json({ error: err.message });
     }
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({
-        error: "El vehículo ya está adentro o la celda ya fue ocupada",
-      });
+      const esCelda = String(err.message).includes("uq_acceso_celda_ocupada");
+      const msg = esCelda ? MSG.CELDA_NO_DISPONIBLE : MSG.YA_DENTRO;
+      await auditarRechazo(req, ctx, msg);
+      return res.status(409).json({ error: msg });
     }
     console.error("Error en movimiento:", err);
     res.status(500).json({ error: "Error interno al registrar el movimiento" });
@@ -115,9 +171,8 @@ async function ejecutar(res, trabajo) {
 }
 
 /**
- * Registra un log de auditoría.
- * @param {import('mysql2/promise').Connection} conn 
- * @param {Object} data 
+ * @function auditar
+ * @description Registra una acción en la tabla audit_log dentro de la transacción actual.
  */
 async function auditar(conn, { idUsuario, login, accion, detalle, ip }) {
   try {
@@ -140,9 +195,8 @@ async function auditar(conn, { idUsuario, login, accion, detalle, ip }) {
 }
 
 /**
- * POST /api/movimientos/entrada - Registrar entrada de vehículo.
- * @param {import('express').Request} req - Body: { placa, id_celda }.
- * @param {import('express').Response} res
+ * @function registrarEntrada
+ * @description Procesa el ingreso de un vehículo.
  */
 export const registrarEntrada = (req, res) => {
   const { placa, id_celda } = req.body ?? {};
@@ -150,7 +204,7 @@ export const registrarEntrada = (req, res) => {
     return res.status(400).json({ error: "Placa y celda requeridos" });
   }
 
-  return ejecutar(res, async (conn) => {
+  return ejecutar(req, res, async (conn) => {
     const formato = validarPlaca(placa);
     if (!formato.valida) throw new ErrorNegocio(400, formato.error);
 
@@ -180,7 +234,7 @@ export const registrarEntrada = (req, res) => {
       [v.id_vehiculo],
     );
     if (dentro.length > 0)
-      throw new ErrorNegocio(400, "El vehículo ya está adentro");
+      throw new ErrorNegocio(400, MSG.YA_DENTRO);
 
     await conn.query(
       `UPDATE celdas
@@ -190,28 +244,26 @@ export const registrarEntrada = (req, res) => {
          AND mantenimiento_hasta <= UTC_TIMESTAMP()`,
     );
 
-    const [mensualidad] = await conn.query(
-      `SELECT (fecha_fin >= DATE(UTC_TIMESTAMP() - INTERVAL 5 HOUR)) AS vigente
-       FROM mensualidades
-       WHERE id_vehiculo = ? AND estado = 'activa'
-       ORDER BY fecha_fin DESC LIMIT 1`,
-      [v.id_vehiculo],
-    );
+    // Vigencia: fecha_inicio <= hoy <= fecha_fin
+    const [mensualidad] = await conn.query(SQL_ULTIMA_MENSUALIDAD, [
+      v.id_vehiculo,
+    ]);
     if (!mensualidad.length) {
       throw new ErrorNegocio(403, "El vehículo no tiene mensualidad activa");
     }
     if (!mensualidad[0].vigente) {
       throw new ErrorNegocio(403, "La mensualidad del vehículo está en mora");
     }
-
+    
+    // Validar fechas específicamente para el mensaje de error
     const [celdas] = await conn.query(
       `SELECT id_celda, codigo, id_tipo_vehiculo FROM celdas
        WHERE id_celda = ? AND activa = TRUE AND en_mantenimiento = FALSE
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [id_celda],
     );
     if (celdas.length === 0) {
-      throw new ErrorNegocio(400, "La celda no existe o no está habilitada");
+      throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
     }
     const c = celdas[0];
     if (c.id_tipo_vehiculo !== v.id_tipo_vehiculo) {
@@ -227,7 +279,7 @@ export const registrarEntrada = (req, res) => {
       [c.id_celda],
     );
     if (ocupada.length > 0)
-      throw new ErrorNegocio(400, "La celda ya está ocupada");
+      throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
 
     const { idOperador, idTurno } = await operadorYTurno(
       conn,
@@ -259,22 +311,22 @@ export const registrarEntrada = (req, res) => {
         tipo: v.tipo,
         celda: c.codigo,
         accion: "entrada",
+        mensaje: "Entrada registrada correctamente",
         ...fechaHoraActual(),
       },
     };
-  });
+  }, { accion: "entrada", placa });
 };
 
 /**
- * POST /api/movimientos/salida - Registrar salida de vehículo.
- * @param {import('express').Request} req - Body: { placa }.
- * @param {import('express').Response} res
+ * @function registrarSalida
+ * @description Procesa la salida de un vehículo.
  */
 export const registrarSalida = (req, res) => {
   const { placa } = req.body ?? {};
   if (!placa) return res.status(400).json({ error: "Placa requerida" });
 
-  return ejecutar(res, async (conn) => {
+  return ejecutar(req, res, async (conn) => {
     const formato = validarPlaca(placa);
     if (!formato.valida) throw new ErrorNegocio(400, formato.error);
 
@@ -287,27 +339,21 @@ export const registrarSalida = (req, res) => {
       [formato.placa],
     );
     if (vehiculos.length === 0)
-      throw new ErrorNegocio(404, "Vehículo no encontrado");
+      throw new ErrorNegocio(404, MSG.NO_DENTRO);
     const v = vehiculos[0];
 
-    if (!validarPlaca(v.placa, v.tipo_codigo).valida) {
-      throw new ErrorNegocio(
-        400,
-        `La placa ${v.placa} no tiene el formato válido para ${v.tipo}`,
-      );
-    }
-
     const [accesos] = await conn.query(
-      `SELECT a.id_acceso, c.codigo AS celda
+      `SELECT a.id_acceso, a.fecha_ingreso, c.codigo AS celda,
+              TIMESTAMPDIFF(MINUTE, a.fecha_ingreso, UTC_TIMESTAMP()) AS minutos
        FROM accesos_vehiculos a
        INNER JOIN celdas c ON c.id_celda = a.id_celda
        WHERE a.id_vehiculo = ? AND a.fecha_salida IS NULL
        ORDER BY a.fecha_ingreso DESC
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [v.id_vehiculo],
     );
     if (accesos.length === 0)
-      throw new ErrorNegocio(400, "El vehículo no está adentro");
+      throw new ErrorNegocio(400, MSG.NO_DENTRO);
     const acceso = accesos[0];
 
     const { idOperador, idTurno } = await operadorYTurno(
@@ -342,24 +388,67 @@ export const registrarSalida = (req, res) => {
         tipo: v.tipo,
         celda: acceso.celda,
         accion: "salida",
+        mensaje: "Salida registrada correctamente",
+        fecha_ingreso: formatearFechaHora(acceso.fecha_ingreso),
+        permanencia: formatearPermanencia(acceso.minutos),
         ...fechaHoraActual(),
       },
     };
-  });
+  }, { accion: "salida", placa });
 };
 
 /**
- * PATCH /api/movimientos/:id_acceso/celda - Reubicar vehículo a otra celda.
- * @param {import('express').Request} req - Params: id_acceso, Body: { id_celda }.
- * @param {import('express').Response} res
+ * @function listarDentro
+ * @description Lista vehículos que se encuentran dentro del parqueadero por placa o documento.
  */
+export const listarDentro = async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (!q) return res.status(400).json({ error: "Ingrese una placa o un documento" });
+
+    const [rows] = await pool.query(
+      `SELECT a.id_acceso, v.placa, v.propietario_nombre, v.propietario_documento,
+              tv.nombre AS tipo, tv.codigo AS tipo_codigo, c.codigo AS celda,
+              a.fecha_ingreso, UTC_TIMESTAMP() AS ahora,
+              TIMESTAMPDIFF(MINUTE, a.fecha_ingreso, UTC_TIMESTAMP()) AS minutos
+       FROM accesos_vehiculos a
+       INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
+       INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = v.id_tipo_vehiculo
+       INNER JOIN celdas c ON c.id_celda = a.id_celda
+       WHERE a.fecha_salida IS NULL
+         AND (v.placa = ? OR v.propietario_documento = ?)
+       ORDER BY a.fecha_ingreso`,
+      [normalizarPlaca(q), q],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: MSG.NO_DENTRO });
+    }
+    res.json(rows.map((r) => ({
+      id_acceso: r.id_acceso,
+      placa: r.placa,
+      propietario: r.propietario_nombre,
+      documento: r.propietario_documento,
+      tipo: r.tipo,
+      tipoCodigo: r.tipo_codigo,
+      celda: r.celda,
+      entrada: formatearFechaHora(r.fecha_ingreso),
+      salida: formatearFechaHora(r.ahora),
+      permanencia: formatearPermanencia(r.minutos),
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al buscar vehículos dentro" });
+  }
+};
+
 export const registrarReubicacion = async (req, res) => {
   const { id_acceso } = req.params ?? {};
   const { id_celda } = req.body ?? {};
   if (!id_acceso) return res.status(400).json({ error: "Acceso requerido" });
   if (!id_celda) return res.status(400).json({ error: "Celda requerida" });
 
-  return ejecutar(res, async (conn) => {
+  return ejecutar(req, res, async (conn) => {
     await conn.query(
       `UPDATE celdas
        SET en_mantenimiento = FALSE, mantenimiento_hasta = NULL
@@ -389,7 +478,7 @@ export const registrarReubicacion = async (req, res) => {
       `SELECT id_celda, codigo FROM celdas
        WHERE id_celda = ? AND activa = TRUE AND en_mantenimiento = FALSE
          AND id_tipo_vehiculo = ?
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [id_celda, acceso.id_tipo_vehiculo],
     );
     if (celdas.length === 0)
@@ -405,7 +494,7 @@ export const registrarReubicacion = async (req, res) => {
       [c.id_celda],
     );
     if (ocupada.length > 0)
-      throw new ErrorNegocio(400, "La celda ya está ocupada");
+      throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
 
     const { idOperador } = await operadorYTurno(conn, req.user?.id_usuario);
 
@@ -432,14 +521,9 @@ export const registrarReubicacion = async (req, res) => {
         accion: "reubicacion",
       },
     };
-  });
+  }, { accion: "reubicacion" });
 };
 
-/**
- * GET /api/movimientos/historial - Listar accesos con filtros y paginación.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- */
 export const listarAccesos = async (req, res) => {
   try {
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
@@ -449,66 +533,40 @@ export const listarAccesos = async (req, res) => {
     );
     const offset = (page - 1) * limit;
 
-    const placa = String(req.query.placa ?? "")
-      .trim()
-      .toUpperCase();
-    const celda = String(req.query.celda ?? "")
-      .trim()
-      .toUpperCase();
+    const placa = String(req.query.placa ?? "").trim().toUpperCase();
+    const celda = String(req.query.celda ?? "").trim().toUpperCase();
     const operador = String(req.query.operador ?? "").trim();
-    const estado = String(req.query.estado ?? "")
-      .trim()
-      .toLowerCase();
+    const estado = String(req.query.estado ?? "").trim().toLowerCase();
     const fechaDesde = String(req.query.fecha_desde ?? "").trim();
     const fechaHasta = String(req.query.fecha_hasta ?? "").trim();
 
     const conds = [];
     const params = [];
 
-    if (placa) {
-      conds.push(`v.placa LIKE ?`);
-      params.push(`%${placa}%`);
-    }
-    if (celda) {
-      conds.push(`c.codigo LIKE ?`);
-      params.push(`%${celda}%`);
-    }
+    if (placa) { conds.push(`v.placa LIKE ?`); params.push(`%${placa}%`); }
+    if (celda) { conds.push(`c.codigo LIKE ?`); params.push(`%${celda}%`); }
     if (operador) {
-      conds.push(
-        `(ui.nombres LIKE ? OR ui.apellidos LIKE ? OR us.nombres LIKE ? OR us.apellidos LIKE ?)`,
-      );
+      conds.push(`(ui.nombres LIKE ? OR ui.apellidos LIKE ? OR us.nombres LIKE ? OR us.apellidos LIKE ?)`);
       const like = `%${operador}%`;
       params.push(like, like, like, like);
     }
     if (estado === "adentro") {
       conds.push(`a.fecha_salida IS NULL`);
-      conds.push(
-        `a.id_acceso = (SELECT MAX(a2.id_acceso) FROM accesos_vehiculos a2 WHERE a2.id_vehiculo = a.id_vehiculo)`,
-      );
+      conds.push(`a.id_acceso = (SELECT MAX(a2.id_acceso) FROM accesos_vehiculos a2 WHERE a2.id_vehiculo = a.id_vehiculo)`);
     } else if (estado === "fuera") {
       conds.push(`a.fecha_salida IS NOT NULL`);
-      conds.push(
-        `a.id_acceso = (SELECT MAX(a2.id_acceso) FROM accesos_vehiculos a2 WHERE a2.id_vehiculo = a.id_vehiculo)`,
-      );
+      conds.push(`a.id_acceso = (SELECT MAX(a2.id_acceso) FROM accesos_vehiculos a2 WHERE a2.id_vehiculo = a.id_vehiculo)`);
     }
-    if (fechaDesde) {
-      conds.push(`DATE(a.fecha_ingreso - INTERVAL 5 HOUR) >= ?`);
-      params.push(fechaDesde);
-    }
-    if (fechaHasta) {
-      conds.push(`DATE(a.fecha_ingreso - INTERVAL 5 HOUR) <= ?`);
-      params.push(fechaHasta);
-    }
+    if (fechaDesde) { conds.push(`DATE(a.fecha_ingreso - INTERVAL 5 HOUR) >= ?`); params.push(fechaDesde); }
+    if (fechaHasta) { conds.push(`DATE(a.fecha_ingreso - INTERVAL 5 HOUR) <= ?`); params.push(fechaHasta); }
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
     const [rows] = await pool.query(
       `SELECT a.id_acceso, v.placa, v.propietario_nombre,
               c.codigo AS celda,
-              ui.nombres AS operador_ingreso_nombres,
-              ui.apellidos AS operador_ingreso_apellidos,
-              us.nombres AS operador_salida_nombres,
-              us.apellidos AS operador_salida_apellidos,
+              ui.nombres AS operador_ingreso_nombres, ui.apellidos AS operador_ingreso_apellidos,
+              us.nombres AS operador_salida_nombres, us.apellidos AS operador_salida_apellidos,
               a.fecha_ingreso, a.fecha_salida
        FROM accesos_vehiculos a
        INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
@@ -532,20 +590,18 @@ export const listarAccesos = async (req, res) => {
       params,
     );
 
-    const total = countRows?.[0]?.total ?? 0;
-
-    res.json({ rows, total: Number(total), page, limit });
+    res.json({ rows, total: Number(countRows?.[0]?.total ?? 0), page, limit });
   } catch (err) {
     console.error(err);
-    res
-      .status(500)
-      .json({ error: "Error al consultar el historial de accesos" });
+    res.status(500).json({ error: "Error al consultar el historial de accesos" });
   }
 };
 
 export default {
   registrarEntrada,
   registrarSalida,
+  listarDentro,
   registrarReubicacion,
   listarAccesos,
+  listarDentro,
 };

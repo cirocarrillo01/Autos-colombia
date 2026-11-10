@@ -80,10 +80,19 @@ test("celdas: inactivar y activar celda libre", async () => {
 });
 
 test("celdas: no se puede poner en mantenimiento si esta ocupada", async () => {
+  // Asegurar vehículo, usuario, puerta, turno existen
+  await pool.query("INSERT IGNORE INTO usuarios (id_usuario, rol, tipo_documento, documento, nombres, apellidos, usuario_login, clave_hash) VALUES (1, 'operador', 'CC', '111', 'Op', 'Test', 'optest', 'hash')");
+  await pool.query("INSERT IGNORE INTO puertas (id_puerta, nombre, activa) VALUES (1, 'P1', TRUE)");
+  await pool.query("INSERT IGNORE INTO turnos (id_turno, id_usuario, estado, base_inicial) VALUES (1, 1, 'abierto', 0)");
+  await pool.query("INSERT IGNORE INTO vehiculos (id_vehiculo, placa, id_tipo_vehiculo) VALUES (998, 'TST001', 1)");
+
+  // Limpiar cualquier acceso previo en celda 3
+  await pool.query("DELETE FROM accesos_vehiculos WHERE id_celda = 3 AND fecha_salida IS NULL");
+
   // Crear un acceso abierto en celda 3 para simular ocupada
   await pool.query(
-    "INSERT INTO accesos_vehiculos (id_vehiculo, id_celda, id_puerta_ingreso, id_operador_ingreso, id_turno_ingreso) VALUES (1, 3, 1, 1, 1)",
-  ).catch(() => {});
+    "INSERT INTO accesos_vehiculos (id_vehiculo, id_celda, id_puerta_ingreso, id_operador_ingreso, id_turno_ingreso) VALUES (998, 3, 1, 1, 1)",
+  );
 
   const req = { params: { id: 3 }, body: { en_mantenimiento: true, minutos_mantenimiento: 10 } };
   const res = mockRes();
@@ -91,7 +100,8 @@ test("celdas: no se puede poner en mantenimiento si esta ocupada", async () => {
   assert.equal(res.statusCode, 400);
 
   // Limpiar
-  await pool.query("DELETE FROM accesos_vehiculos WHERE id_celda = 3 AND fecha_salida IS NULL").catch(() => {});
+  await pool.query("DELETE FROM accesos_vehiculos WHERE id_vehiculo = 998");
+  await pool.query("DELETE FROM vehiculos WHERE id_vehiculo = 998");
 });
 
 test("celdas: no se puede cambiar tipo de una celda ocupada", async () => {

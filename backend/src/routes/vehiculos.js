@@ -7,6 +7,8 @@ import roleMiddleware from "../middleware/roleMiddleware.js";
 import {
   listarVehiculos,
   buscarVehiculoPorPlaca,
+  buscarVehiculosPorDocumento,
+  buscarVehiculosPorPropietario,
   crearVehiculo,
   actualizarVehiculo,
   cambiarEstadoVehiculo,
@@ -23,10 +25,22 @@ const router = Router();
 router.get("/", autenticar, listarVehiculos);
 
 /**
+ * @route GET /api/vehiculos/documento/:documento
+ * @description Vehículos de un propietario por documento (para ingreso/salida)
+ */
+router.get("/documento/:documento", autenticar, buscarVehiculosPorDocumento);
+
+/**
  * @route GET /api/vehiculos/:placa
  * @description Obtener vehículo por placa (para ingreso/salida)
  */
 router.get("/:placa", autenticar, buscarVehiculoPorPlaca);
+
+/**
+ * @route GET /api/vehiculos/propietario/:documento
+ * @description Buscar vehículos por documento del propietario (HU04)
+ */
+router.get("/propietario/:documento", autenticar, buscarVehiculosPorPropietario);
 
 /**
  * @route POST /api/vehiculos

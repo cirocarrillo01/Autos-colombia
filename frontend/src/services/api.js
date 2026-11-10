@@ -232,6 +232,9 @@ export const listarVehiculos = (opts) => pedir(`${API}/vehiculos${qs(opts)}`);
 export const buscarVehiculo = (placa) =>
   pedir(`${API}/vehiculos/${encodeURIComponent(normalizarPlaca(placa))}`);
 
+export const buscarVehiculosPorDocumento = (documento) =>
+  pedir(`${API}/vehiculos/documento/${encodeURIComponent(documento)}`);
+
 export const crearVehiculo = (datos) =>
   pedir(`${API}/vehiculos`, json("POST", datos));
 
@@ -246,6 +249,9 @@ export const cambiarEstadoVehiculo = (placa, activo) =>
     `${API}/vehiculos/${encodeURIComponent(normalizarPlaca(placa))}/estado`,
     json("PATCH", { activo }),
   );
+
+export const buscarVehiculosDentro = (q) =>
+  pedir(`${API}/movimientos/dentro${qs({ q })}`);
 
 // ---------- Ingreso / salida ----------
 export const obtenerCeldasDisponibles = (tipo) =>

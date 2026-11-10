@@ -21,7 +21,7 @@ const formatoPesos = (valor) =>
  * @param {Object} props
  * @param {Object} props.vehiculo - Datos del vehículo desde el backend.
  * @param {string} props.vehiculo.placa
- * @param {string} props.vehiculo.estado - "Adentro" | "Afuera"
+ * @param {string} props.vehiculo.estado - "Dentro" | "Fuera"
  * @param {number} props.vehiculo.mensualidad
  * @param {string} props.vehiculo.estadoMensualidad - "Al día" | "En mora" | "Sin mensualidad"
  * @param {string} props.vehiculo.tipoCodigo - "carro" | "moto"

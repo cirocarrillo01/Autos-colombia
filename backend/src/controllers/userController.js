@@ -8,11 +8,12 @@ import * as auditRepository from "../repositories/auditRepository.js";
 import { validarClave } from "../middleware/validation.js";
 
 /**
- * Re-autenticación del administrador que ejecuta la acción.
- * Valida la `claveAdmin` contra la clave del usuario autenticado (req.user).
- * @param {import('express').Request} req - Request que debe contener al usuario autenticado (req.user).
- * @param {string} claveAdmin - Clave de administrador ingresada para confirmar la acción.
- * @returns {Promise<{status: number, error: string} | null>} null si es válida, objeto de error si falla.
+ * @function verificarClaveAdmin
+ * @description Validación de doble factor (re-autenticación) para acciones críticas.
+ * Compara la contraseña provista en `claveAdmin` con las credenciales de quien hace la petición.
+ * @param {import('express').Request} req - Petición Express que contiene el objeto `req.user`.
+ * @param {string} claveAdmin - Contraseña del administrador ingresada en el modal de confirmación.
+ * @returns {Promise<{status: number, error: string} | null>} Retorna un objeto con error si falla, o `null` si es válida.
  */
 const verificarClaveAdmin = async (req, claveAdmin) => {
   if (!claveAdmin)
@@ -25,11 +26,11 @@ const verificarClaveAdmin = async (req, claveAdmin) => {
 };
 
 /**
- * GET /api/users
- * RF1.5 - Listar y buscar usuarios con paginación.
- * @param {import('express').Request} req - Query params: search, rol, estado, page, limit.
+ * @function listar
+ * @description Obtiene el catálogo de usuarios del sistema (operadores y administradores).
+ * Permite buscar por texto (nombre, apellido, documento, login), filtrar por rol/estado y paginar.
+ * @param {import('express').Request} req - Query: { search, rol, estado, page, limit }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const listar = async (req, res) => {
   const { search, rol, estado, page, limit } = req.query;
@@ -44,11 +45,10 @@ export const listar = async (req, res) => {
 };
 
 /**
- * GET /api/users/:id
- * Obtener un usuario por id.
- * @param {import('express').Request} req
+ * @function obtener
+ * @description Recupera el perfil detallado de un usuario por su ID numérico.
+ * @param {import('express').Request} req - Params: id.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const obtener = async (req, res) => {
   const resultado = await userService.obtenerUsuario(Number(req.params.id));
@@ -58,11 +58,11 @@ export const obtener = async (req, res) => {
 };
 
 /**
- * PUT /api/users/:id
- * RF1.6 - Editar datos y cambiar rol (solo administrador).
- * @param {import('express').Request} req - Body: datos del usuario, claveAdmin para confirmar.
+ * @function actualizar
+ * @description Modifica los datos personales o el rol de un usuario.
+ * Requiere `claveAdmin`. Un administrador no puede degradar su propio rol.
+ * @param {import('express').Request} req - Params: id, Body: { nombres, apellidos, rol, email, telefono, claveAdmin }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const actualizar = async (req, res) => {
   const id = Number(req.params.id);
@@ -92,11 +92,11 @@ export const actualizar = async (req, res) => {
 };
 
 /**
- * PATCH /api/users/:id/estado
- * RF1.7 - Activar o desactivar un usuario (solo administrador).
- * @param {import('express').Request} req - Body: estado (activo/inactivo).
+ * @function cambiarEstado
+ * @description Activa o desactiva a un usuario para permitirle o prohibirle el acceso al sistema.
+ * Un administrador no puede desactivarse a sí mismo. Al desactivar, se cierran las sesiones activas del usuario.
+ * @param {import('express').Request} req - Params: id, Body: { estado: 'activo'|'inactivo' }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const cambiarEstado = async (req, res) => {
   const id = Number(req.params.id);
@@ -122,11 +122,11 @@ export const cambiarEstado = async (req, res) => {
 };
 
 /**
- * PATCH /api/users/:id/password
- * RF1.8 - Restablecer la clave de otro usuario (solo administrador).
- * @param {import('express').Request} req - Body: clave nueva, claveAdmin del admin.
+ * @function restablecerPassword
+ * @description Permite a un administrador cambiar la clave de otro usuario.
+ * Requiere re-autenticación (claveAdmin) y valida el formato de la nueva clave.
+ * @param {import('express').Request} req - Params: id, Body: { clave, claveAdmin }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const restablecerPassword = async (req, res) => {
   const { clave, claveAdmin } = req.body ?? {};

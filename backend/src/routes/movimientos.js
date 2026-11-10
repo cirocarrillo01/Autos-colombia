@@ -9,15 +9,20 @@ import {
   registrarSalida,
   registrarReubicacion,
   listarAccesos,
+  listarDentro,
 } from "../controllers/movimientoController.js";
 
 const router = Router();
 
 /**
- * @route GET /api/movimientos/historial
- * @description Consultar historial de accesos (admin, operador)
+ * @route GET /api/movimientos/dentro
+ * @description Buscar vehículos dentro por placa o documento (admin, operador)
  */
+/** @route GET /api/movimientos/historial - Historial de accesos */
 router.get("/historial", autenticar, listarAccesos);
+
+/** @route GET /api/movimientos/dentro?q= - Vehículos dentro por placa o documento */
+router.get("/dentro", autenticar, listarDentro);
 
 /**
  * @route POST /api/movimientos/entrada

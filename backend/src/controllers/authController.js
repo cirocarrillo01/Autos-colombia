@@ -5,11 +5,12 @@ import * as authService from "../services/authService.js";
 import { validarDatosUsuario } from "../middleware/validation.js";
 
 /**
- * POST /api/auth/register
- * Registra un nuevo usuario, validando previamente la clave del administrador.
- * @param {import('express').Request} req - Request con datos del usuario y claveAdmin.
+ * @function register
+ * @description Registra un nuevo usuario en el sistema.
+ * Requiere que el solicitante sea administrador y proporcione su propia clave (claveAdmin) como factor de seguridad adicional.
+ * @param {import('express').Request} req - Body: { rol, tipo_documento, documento, nombres, apellidos, usuario_login, clave, claveAdmin }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
+ * @returns {Promise<void>} JSON con el usuario creado (201) o error (400/401/409).
  */
 export const register = async (req, res) => {
   const { claveAdmin } = req.body;
@@ -32,11 +33,12 @@ export const register = async (req, res) => {
 };
 
 /**
- * POST /api/auth/login
- * Inicia sesión y genera tokens de acceso.
- * @param {import('express').Request} req - Login (usuario/clave).
+ * @function login
+ * @description Autentica a un usuario y genera un par de tokens (Access y Refresh).
+ * Implementa protección contra fuerza bruta vía middleware externo.
+ * @param {import('express').Request} req - Body: { usuario_login, clave }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
+ * @returns {Promise<void>} JSON con tokens y perfil del usuario (200).
  */
 export const login = async (req, res) => {
   const resultado = await authService.login(req, req.body);
@@ -46,11 +48,10 @@ export const login = async (req, res) => {
 };
 
 /**
- * GET /api/auth/me
- * Obtiene la información del usuario autenticado.
+ * @function me
+ * @description Retorna el perfil completo del usuario autenticado basado en el token.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
- * @returns {void}
  */
 export const me = async (req, res) => {
   res.json({
@@ -67,11 +68,11 @@ export const me = async (req, res) => {
 };
 
 /**
- * POST /api/auth/verify-password
- * Verifica si la clave del usuario autenticado es correcta.
- * @param {import('express').Request} req - { clave }.
+ * @function verifyPassword
+ * @description Valida si una contraseña coincide con la del usuario logueado. 
+ * Útil para confirmaciones de acciones sensibles (step-up authentication).
+ * @param {import('express').Request} req - Body: { clave }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const verifyPassword = async (req, res) => {
   const { clave } = req.body ?? {};
@@ -86,11 +87,10 @@ export const verifyPassword = async (req, res) => {
 };
 
 /**
- * POST /api/auth/logout
- * Cierra la sesión y revoca el token actual.
+ * @function logout
+ * @description Finaliza la sesión, revoca el Access Token (vía JTI) y elimina el Refresh Token.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const logout = async (req, res) => {
   const resultado = await authService.logout({
@@ -101,11 +101,11 @@ export const logout = async (req, res) => {
 };
 
 /**
- * POST /api/auth/refresh
- * Refresca el token de acceso usando el token de refresco.
- * @param {import('express').Request} req - { refresh_token }.
+ * @function refresh
+ * @description Genera un nuevo Access Token usando un Refresh Token válido y no rotado.
+ * Implementa rotación de Refresh Token (el anterior queda invalidado).
+ * @param {import('express').Request} req - Body: { refresh_token }.
  * @param {import('express').Response} res
- * @returns {Promise<void>}
  */
 export const refresh = async (req, res) => {
   const { refresh_token } = req.body ?? {};

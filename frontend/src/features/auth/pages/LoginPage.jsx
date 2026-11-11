@@ -25,24 +25,26 @@ export default function LoginPage() {
    * Envía credenciales al backend y maneja la navegación.
    * @param {React.FormEvent} e 
    */
-  const enviar = async (e) => {
+  const enviar = (e) => {
     e.preventDefault();
     setEnviando(true);
     setError("");
 
-    try {
-      const usuario = await login(form.usuario_login.trim(), form.clave);
-      if (usuario) {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-      setError("Error en el login. Intente nuevamente.");
-    } catch (err) {
-      manejarError(err);
-      setError(err.message || "Error en el login");
-    } finally {
-      setEnviando(false);
-    }
+    login(form.usuario_login.trim(), form.clave)
+      .then((usuario) => {
+        if (usuario) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+        setError("Error en el login. Intente nuevamente.");
+      })
+      .catch((err) => {
+        manejarError(err);
+        setError(err.message || "Error en el login");
+      })
+      .finally(() => {
+        setEnviando(false);
+      });
   };
 
   return (
@@ -57,7 +59,6 @@ export default function LoginPage() {
           name="usuario_login"
           value={form.usuario_login}
           onChange={cambiar}
-          autoFocus
           autoComplete="username"
           required
           placeholder="usuario"

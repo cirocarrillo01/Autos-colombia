@@ -1,7 +1,6 @@
 //frontend/src/Components/ingreso-salida/FormularioIngreso.jsx
-// Formulario de ingreso: búsqueda por placa o documento, selección de celda y registro.
-
-import { useState, useRef, useEffect, useCallback } from "react";
+// Ingreso: búsqueda por placa o documento, selección de celda y registro.
+import { useState, useCallback } from "react";
 import {
   buscarVehiculo,
   buscarVehiculosPorDocumento,
@@ -9,13 +8,15 @@ import {
   registrarMovimiento,
 } from "../../services/api";
 import { validarPlaca } from "../../validators/placa";
+import { esDocumento } from "../../validators/documento";
+import { useAutoLimpiar } from "../../hooks/useAutoLimpiar";
 import AlertaPlaca from "./AlertaPlaca.jsx";
 import PanelVehiculo from "./PanelVehiculo.jsx";
 import PanelMovimiento from "./PanelMovimiento.jsx";
 import SelectorVehiculoDialog from "./SelectorVehiculoDialog.jsx";
 
-const esDocumento = (t) => /^\d{5,20}$/.test(t.trim());
 const MSG_SIN_CELDAS = "No hay celdas disponibles para este tipo de vehículo";
+const ESTADO_OK = "Al día";
 
 export default function FormularioIngreso() {
   const [entrada, setEntrada] = useState("");
@@ -27,9 +28,9 @@ export default function FormularioIngreso() {
   const [movimiento, setMovimiento] = useState(null);
   const [error, setError] = useState("");
   const [alerta, setAlerta] = useState(null);
-  const timerRef = useRef(null);
+  const [cargando, setCargando] = useState(false);
 
-  function handleLimpiar() {
+  const handleLimpiar = useCallback(() => {
     setEntrada("");
     setVehiculo(null);
     setOpciones(null);
@@ -39,84 +40,77 @@ export default function FormularioIngreso() {
     setError("");
     setAlerta(null);
     setVista("idle");
-  }
+    setCargando(false);
+  }, []);
 
-  const resetTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (vista !== "idle" || alerta !== null) {
-      timerRef.current = setTimeout(() => {
-        handleLimpiar();
-      }, 35000);
-    }
-  }, [vista, alerta]);
+  useAutoLimpiar(vista !== "idle" || alerta !== null, handleLimpiar);
 
-  useEffect(() => {
-    resetTimer();
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [vista, alerta, resetTimer]);
+  const procesarVehiculo = useCallback(
+    async (v) => {
+      setEntrada(v.placa);
 
-  const procesarVehiculo = async (encontrado) => {
-    setEntrada(encontrado.placa);
-    if (encontrado.estado === "Dentro") {
-      setAlerta({
-        tipo: "ya-procesada",
-        mensaje: "El vehículo ya se encuentra dentro del parqueadero",
-      });
-      return;
-    }
-    if (
-      encontrado.estadoMensualidad === "En mora" ||
-      encontrado.estadoMensualidad === "Sin mensualidad"
-    ) {
-      setAlerta({
-        tipo: "ingreso-bloqueado",
-        mensaje: `La placa ${encontrado.placa} no puede ingresar. Mensualidad: ${encontrado.estadoMensualidad}.`,
-      });
-      setVehiculo(encontrado);
-      setVista("resultado");
-      return;
-    }
-    const disponibles = await obtenerCeldasDisponibles(encontrado.tipoCodigo);
-    if (disponibles.length === 0) {
-      setError(MSG_SIN_CELDAS);
-      return;
-    }
-    setVehiculo(encontrado);
-    setCeldas(disponibles);
-    setCeldaSeleccionada(null);
-    setVista("resultado");
-  };
+      if (v.estado === "Dentro") {
+        return setAlerta({
+          tipo: "ya-procesada",
+          mensaje: "El vehículo ya se encuentra dentro del parqueadero",
+        });
+      }
 
-  const handleBuscar = async () => {
+      // Cualquier estado distinto de "Al día" bloquea el ingreso.
+      if (v.estadoMensualidad !== ESTADO_OK) {
+        setAlerta({
+          tipo: "ingreso-bloqueado",
+          mensaje: `La placa ${v.placa} no puede ingresar. Mensualidad: ${v.estadoMensualidad}.`,
+        });
+        setVehiculo(v);
+        setVista("resultado");
+        return;
+      }
+
+      try {
+        const disponibles = await obtenerCeldasDisponibles(v.tipoCodigo);
+        if (!disponibles.length) {
+          return setError(MSG_SIN_CELDAS);
+        }
+        setVehiculo(v);
+        setCeldas(disponibles);
+        setCeldaSeleccionada(null);
+        setVista("resultado");
+      } catch (err) {
+        setError(err.message || "No se pudieron cargar las celdas disponibles.");
+      }
+    },
+    []
+  );
+
+  const handleBuscar = useCallback(async () => {
     setError("");
     setAlerta(null);
+    setCargando(false);
+
     const texto = entrada.trim();
     if (!texto) {
-      setAlerta({
+      return setAlerta({
         tipo: "campo-vacio",
         mensaje: "Ingresa una placa o un documento.",
       });
-      return;
     }
+
     try {
       if (esDocumento(texto)) {
         const lista = await buscarVehiculosPorDocumento(texto);
-        if (lista.length === 1) {
-          await procesarVehiculo(lista[0]);
-        } else {
-          setOpciones(lista);
-        }
-        return;
+        return lista.length === 1
+          ? procesarVehiculo(lista[0])
+          : setOpciones(lista);
       }
-      const validacion = validarPlaca(texto);
-      if (!validacion.valida) {
-        setAlerta({ tipo: "formato-invalido", mensaje: validacion.error });
-        return;
+
+      const val = validarPlaca(texto);
+      if (!val.valida) {
+        return setAlerta({ tipo: "formato-invalido", mensaje: val.error });
       }
-      setEntrada(validacion.placa);
-      await procesarVehiculo(await buscarVehiculo(validacion.placa));
+
+      setEntrada(val.placa);
+      await procesarVehiculo(await buscarVehiculo(val.placa));
     } catch (err) {
       if (err.status === 404) {
         setAlerta({
@@ -129,22 +123,28 @@ export default function FormularioIngreso() {
         setError(err.message);
       }
     }
-  };
+  }, [entrada, procesarVehiculo]);
 
-  const handleSeleccionarVehiculo = async (v) => {
-    setOpciones(null);
-    try {
-      await procesarVehiculo(v);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-  const handleIngresar = async () => {
-    if (!celdaSeleccionada) {
-      setError("Selecciona una celda");
-      return;
-    }
+  const handleSeleccionarVehiculo = useCallback(
+    async (v) => {
+      setOpciones(null);
+      try {
+        await procesarVehiculo(v);
+      } catch (err) {
+        setError(err.message);
+      }
+    },
+    [procesarVehiculo]
+  );
+
+  const handleIngresar = useCallback(async () => {
+    if (!celdaSeleccionada) return setError("Selecciona una celda");
+    if (!vehiculo) return;
+    if (cargando) return;
+
     setError("");
+    setCargando(true);
+
     try {
       const mov = await registrarMovimiento({
         placa: vehiculo.placa,
@@ -154,6 +154,8 @@ export default function FormularioIngreso() {
       setMovimiento(mov);
       setVista("confirmado");
     } catch (err) {
+      setCargando(false);
+
       if (err.status === 403) {
         setAlerta({
           tipo: "ingreso-bloqueado",
@@ -162,20 +164,20 @@ export default function FormularioIngreso() {
       } else if (err.status === 409) {
         setError(err.message);
         setCeldaSeleccionada(null);
+
         try {
-          const disponibles = await obtenerCeldasDisponibles(
-            vehiculo.tipoCodigo,
-          );
-          setCeldas(disponibles);
-          if (disponibles.length === 0) setError(MSG_SIN_CELDAS);
+          const d = await obtenerCeldasDisponibles(vehiculo.tipoCodigo);
+          setCeldas(d);
+          if (!d.length) setError(MSG_SIN_CELDAS);
         } catch (e2) {
-          setError(e2.message);
+          // No sobreescribir el error original del 409 si el refresco falla.
+          setError((prev) => prev || err.message || "No se pudieron actualizar las celdas.");
         }
       } else {
         setError(err.message);
       }
     }
-  };
+  }, [celdaSeleccionada, vehiculo, cargando]);
 
   const bloqueado = alerta?.tipo === "ingreso-bloqueado";
 
@@ -193,7 +195,6 @@ export default function FormularioIngreso() {
   return (
     <div className="Consulta-card">
       <h2 className="Consulta-titulo">Ingresar</h2>
-
       <div className="Consulta-input-row">
         <input
           type="text"
@@ -222,17 +223,17 @@ export default function FormularioIngreso() {
 
           {!bloqueado && (
             <div className="Celdas-grid">
-              {celdas.map((celda) => (
+              {celdas.map((c) => (
                 <button
-                  key={celda.id_celda}
+                  key={c.id_celda}
                   className={`Celda ${
-                    celdaSeleccionada?.id_celda === celda.id_celda
+                    celdaSeleccionada?.id_celda === c.id_celda
                       ? "Celda--selected"
                       : ""
                   }`}
-                  onClick={() => setCeldaSeleccionada(celda)}
+                  onClick={() => setCeldaSeleccionada(c)}
                 >
-                  {celda.codigo}
+                  {c.codigo}
                 </button>
               ))}
             </div>
@@ -242,9 +243,9 @@ export default function FormularioIngreso() {
             <button
               className="Consulta-btn-ingresar"
               onClick={handleIngresar}
-              disabled={!celdaSeleccionada || bloqueado}
+              disabled={!celdaSeleccionada || bloqueado || cargando}
             >
-              Ingresar
+              {cargando ? "Procesando..." : "Ingresar"}
             </button>
             <button className="Consulta-btn-limpiar" onClick={handleLimpiar}>
               Limpiar
@@ -257,7 +258,10 @@ export default function FormularioIngreso() {
         <>
           <PanelMovimiento movimiento={movimiento} />
           <div className="Consulta-acciones">
-            <button className="Consulta-btn-limpiar" onClick={handleLimpiar}>
+            <button
+              className="Consulta-btn-limpiar"
+              onClick={handleLimpiar}
+            >
               Nuevo ingreso
             </button>
           </div>

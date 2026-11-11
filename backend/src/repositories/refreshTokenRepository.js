@@ -1,55 +1,35 @@
-//backend/src/repositories/refreshTokenRepository.js
-// Gestión de Refresh Tokens en BD.
-
-import { query } from "../config/db.js";
+﻿// Refresh tokens. Ahora se guarda el SHA-256 (si se filtra la BD no hay tokens reutilizables).
 import crypto from "node:crypto";
+import { query } from "../config/db.js";
 
-/**
- * Crea un nuevo refresh token para un usuario.
- * @param {number} id_usuario 
- * @param {number} dias - Días de validez.
- * @returns {Promise<string>} Token generado.
- */
+export const hashToken = (token) =>
+  crypto.createHash("sha256").update(String(token)).digest("hex");
+
 export const crearRefreshToken = async (id_usuario, dias = 7) => {
   const token = crypto.randomUUID() + crypto.randomUUID();
   await query(
     `INSERT INTO refresh_tokens (id_usuario, token, expires_at)
      VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY))`,
-    [id_usuario, token, dias],
+    [id_usuario, hashToken(token), dias],
   );
   return token;
 };
 
-/**
- * Valida un refresh token (no revocado, no expirado).
- * @param {string} token 
- * @returns {Promise<{id_usuario: number}|null>}
- */
 export const validarRefreshToken = async (token) => {
   const rows = await query(
     `SELECT id_usuario FROM refresh_tokens
      WHERE token = ? AND revoked = FALSE AND expires_at > UTC_TIMESTAMP()`,
-    [token],
+    [hashToken(token)],
   );
   return rows[0] ?? null;
 };
 
-/**
- * Revoca un refresh token específico.
- * @param {string} token 
- * @returns {Promise<void>}
- */
-export const revocarRefreshToken = async (token) => {
-  await query(`UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?`, [token]);
-};
+export const revocarRefreshToken = (token) =>
+  query(`UPDATE refresh_tokens SET revoked = TRUE WHERE token = ?`, [
+    hashToken(token),
+  ]);
 
-/**
- * Revoca todos los refresh tokens de un usuario.
- * @param {number} id_usuario 
- * @returns {Promise<void>}
- */
-export const revocarRefreshTokensUsuario = async (id_usuario) => {
-  await query(`UPDATE refresh_tokens SET revoked = TRUE WHERE id_usuario = ?`, [
+export const revocarRefreshTokensUsuario = (id_usuario) =>
+  query(`UPDATE refresh_tokens SET revoked = TRUE WHERE id_usuario = ?`, [
     id_usuario,
   ]);
-};

@@ -35,7 +35,7 @@ test("usuarios: registrar usuario sin claveAdmin falla (re-auth)", async () => {
   
   const { register } = await import("../src/controllers/authController.js");
   await register(req, res);
-  assert.equal(res.statusCode, 401);
+  assert.equal(res.statusCode, 422);
 });
 
 test("usuarios: registrar usuario con claveAdmin incorrecta falla", async () => {
@@ -57,7 +57,7 @@ test("usuarios: registrar usuario con claveAdmin incorrecta falla", async () => 
   const res = mockRes();
   const { register } = await import("../src/controllers/authController.js");
   await register(req, res);
-  assert.equal(res.statusCode, 401);
+  assert.equal(res.statusCode, 403);
 });
 
 test("usuarios: registrar usuario con claveAdmin correcta exitoso", async () => {

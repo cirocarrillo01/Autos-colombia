@@ -1,220 +1,104 @@
-﻿//backend/src/controllers/celdaController.js
-// Gestión completa de celdas (RF3).
-//   GET    /api/celdas                 listar con filtros (tipo, bloque, estado) y paginación
-//   GET    /api/celdas/disponibles     celdas libres por tipo (para ingreso/salida)
-//   GET    /api/celdas/:id             obtener una celda
-//   POST   /api/celdas                 crear celda (solo admin)
-//   PUT    /api/celdas/:id             editar tipo de celda si no tiene vehículo asignado (RF3.8)
-//   PATCH  /api/celdas/:id/estado      activar/inactivar / mantenimiento (RF3.7)
-//   GET    /api/celdas/resumen         resumen por tipo: total, libres, asignadas, ocupadas, no disponibles (RF3.9)
-//   GET    /api/celdas/bloques         celdas organizadas por bloques (RF3.10)
-//   GET    /api/celdas/tipos           tipos de vehículo para el formulario de crear celda
+﻿// Gestión de celdas (RF3).
+import { query, conTransaccion } from "../config/db.js";
+import {
+  ESTADO_SQL,
+  SQL_OCUPADA,
+  limiteCeldas,
+  liberarMantenimientosExpirados,
+} from "../utils/celdas.js";
+import { paginar } from "../utils/consultas.js";
+import { ErrorNegocio } from "../utils/errores.js";
 
-import { query } from "../config/db.js";
+const SELECT_CELDA = `
+  SELECT c.id_celda, c.codigo, c.letra, c.numero, c.id_tipo_vehiculo,
+         tv.nombre AS tipo, tv.codigo AS tipo_codigo,
+         c.activa, c.en_mantenimiento, c.mantenimiento_hasta, c.fecha_creacion,
+         (SELECT a.id_acceso FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL LIMIT 1) AS id_acceso_abierto,
+         (SELECT v.placa FROM accesos_vehiculos a INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
+           WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL LIMIT 1) AS placa_ocupante,
+         ${ESTADO_SQL} AS estado
+  FROM celdas c INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo`;
 
-/**
- * @function liberarMantenimientosExpirados
- * @description Proceso de limpieza que marca como libres las celdas cuyo tiempo programado de mantenimiento ha terminado.
- * Compara la columna `mantenimiento_hasta` con el tiempo actual del servidor (UTC).
- * @returns {Promise<void>}
- */
-async function liberarMantenimientosExpirados() {
-  await query(
-    `UPDATE celdas
-     SET en_mantenimiento = FALSE, mantenimiento_hasta = NULL
-     WHERE en_mantenimiento = TRUE
-       AND mantenimiento_hasta IS NOT NULL
-       AND mantenimiento_hasta <= UTC_TIMESTAMP()`,
-  );
-}
+const FILTROS_ESTADO = {
+  inactiva: `c.activa = FALSE`,
+  "en mantenimiento": `c.activa = TRUE AND c.en_mantenimiento = TRUE`,
+  ocupada: SQL_OCUPADA,
+  libre: `c.activa = TRUE AND c.en_mantenimiento = FALSE AND NOT ${SQL_OCUPADA}`,
+};
 
-/** 
- * @constant ESTADO_SQL
- * @type {string}
- * @description Fragmento de consulta SQL reutilizable para calcular el estado dinámico de una celda.
- * Prioridad de estados: Inactiva > En mantenimiento > Ocupada > Libre.
- */
-const ESTADO_SQL = `
-  CASE
-    WHEN c.activa = FALSE THEN 'inactiva'
-    WHEN c.en_mantenimiento = TRUE AND (c.mantenimiento_hasta IS NULL OR c.mantenimiento_hasta > UTC_TIMESTAMP()) THEN 'en mantenimiento'
-    WHEN EXISTS (
-      SELECT 1 FROM accesos_vehiculos a
-      WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
-    ) THEN 'ocupada'
-    ELSE 'libre'
-  END
-`;
+/** Traduce ErrorNegocio -> respuesta; cualquier otro error -> 500 con `mensaje500`. */
+const manejar = (res, err, mensaje500) => {
+  if (err instanceof ErrorNegocio)
+    return res.status(err.status).json({ error: err.message });
+  console.error(err);
+  return res.status(500).json({ error: mensaje500 });
+};
 
-/**
- * @function listarCeldas
- * @description Obtiene el listado completo de celdas con soporte para filtros de tipo, bloque y estado actual.
- * Incluye información del ocupante si la celda está ocupada.
- * @param {import('express').Request} req - Query params: { tipo, bloque, estado, page, limit }.
- * @param {import('express').Response} res
- * @returns {Promise<void>} JSON con lista paginada de celdas.
- */
 export const listarCeldas = async (req, res) => {
   try {
     await liberarMantenimientosExpirados();
-    const { tipo, bloque, estado, page = 1, limit = 20 } = req.query;
-    const p = Math.max(Number.parseInt(page, 10) || 1, 1);
-    const l = Math.max(Math.min(Number.parseInt(limit, 10) || 20, 100), 1);
-    const offset = (p - 1) * l;
-
-    const conds = [];
-    const params = [];
-
+    const { tipo, bloque, estado } = req.query;
+    const { page, limit, offset } = paginar(req.query);
+    const conds = [],
+      params = [];
     if (tipo === "carro" || tipo === "moto") {
-      conds.push(
-        `c.id_tipo_vehiculo = (SELECT id_tipo_vehiculo FROM tipos_vehiculos WHERE codigo = ? LIMIT 1)`,
-      );
+      conds.push(`tv.codigo = ?`);
       params.push(tipo);
     }
     if (bloque) {
       conds.push(`c.letra = ?`);
       params.push(String(bloque).toUpperCase());
     }
-
     if (estado) {
-      const e = String(estado).toLowerCase();
-      if (e === "inactiva") {
-        conds.push(`c.activa = FALSE`);
-      } else if (e === "en mantenimiento") {
-        conds.push(`c.en_mantenimiento = TRUE AND c.activa = TRUE`);
-      } else if (e === "ocupada") {
-        conds.push(
-          `EXISTS (SELECT 1 FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL)`,
-        );
-      } else if (e === "asignada") {
-        conds.push(`1 = 0`);
-      } else if (e === "libre") {
-        conds.push(`c.activa = TRUE AND c.en_mantenimiento = FALSE
-          AND NOT EXISTS (SELECT 1 FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL)`);
-      } else {
-        return res.status(400).json({ error: "Estado inválido" });
-      }
+      const filtro = FILTROS_ESTADO[String(estado).toLowerCase()];
+      if (!filtro) return res.status(400).json({ error: "Estado inválido" });
+      conds.push(filtro);
     }
-
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-
     const rows = await query(
-      `SELECT c.id_celda, c.codigo, c.letra, c.numero, c.id_tipo_vehiculo,
-              tv.nombre AS tipo, tv.codigo AS tipo_codigo,
-              c.activa, c.en_mantenimiento, c.fecha_creacion,
-              NULL AS placa_asignada,
-              (SELECT v.placa FROM accesos_vehiculos a
-                INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
-                WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
-                LIMIT 1) AS placa_ocupante,
-              ${ESTADO_SQL} AS estado
-       FROM celdas c
-       INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo
-       ${where}
-       ORDER BY c.letra, c.numero
-       LIMIT ? OFFSET ?`,
-      [...params, l, offset],
+      `${SELECT_CELDA} ${where} ORDER BY c.letra, c.numero LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
     );
-
-    const countRows = await query(
-      `SELECT COUNT(*) AS total FROM celdas c ${where}`,
+    const [{ total }] = await query(
+      `SELECT COUNT(*) AS total FROM celdas c INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo ${where}`,
       params,
     );
-
-    res.json({
-      rows,
-      total: Number(countRows[0]?.total ?? 0),
-      page: p,
-      limit: l,
-    });
+    res.json({ rows, total: Number(total), page, limit });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al listar las celdas" });
+    manejar(res, err, "Error al listar las celdas");
   }
 };
 
-/**
- * @function obtenerCeldasDisponibles
- * @description Filtra celdas que están activas, sin mantenimiento y sin vehículo adentro.
- * Se usa principalmente en el formulario de registro de ingreso.
- * @param {import('express').Request} req - Query params: { tipo }.
- * @param {import('express').Response} res
- */
 export const obtenerCeldasDisponibles = async (req, res) => {
   try {
     await liberarMantenimientosExpirados();
-    const { tipo } = req.query;
-
-    let sql = `
-      SELECT c.id_celda, c.codigo, c.id_tipo_vehiculo, c.letra, c.numero
-      FROM celdas c
-      WHERE c.activa = TRUE
-        AND c.en_mantenimiento = FALSE
-        AND NOT EXISTS (
-          SELECT 1 FROM accesos_vehiculos a
-          WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
-        )
-    `;
     const params = [];
-
-    if (tipo === "carro" || tipo === "moto") {
-      sql += ` AND c.id_tipo_vehiculo = (
-        SELECT id_tipo_vehiculo FROM tipos_vehiculos WHERE codigo = ? LIMIT 1
-      )`;
-      params.push(tipo);
+    let sql = `SELECT c.id_celda, c.codigo, c.id_tipo_vehiculo, c.letra, c.numero
+               FROM celdas c INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo
+               WHERE c.activa = TRUE AND c.en_mantenimiento = FALSE AND NOT ${SQL_OCUPADA}`;
+    if (req.query.tipo === "carro" || req.query.tipo === "moto") {
+      sql += ` AND tv.codigo = ?`;
+      params.push(req.query.tipo);
     }
-
-    sql += " ORDER BY c.letra, c.numero";
-
-    res.json(await query(sql, params));
+    res.json(await query(sql + ` ORDER BY c.letra, c.numero`, params));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al obtener las celdas" });
+    manejar(res, err, "Error al obtener las celdas");
   }
 };
 
-/**
- * @function obtenerCelda
- * @description Obtiene el detalle de una celda específica por su ID, incluyendo estado actual y ocupante.
- * @param {import('express').Request} req - Params: id.
- * @param {import('express').Response} res
- */
 export const obtenerCelda = async (req, res) => {
   try {
     await liberarMantenimientosExpirados();
-    const filas = await query(
-      `SELECT c.id_celda, c.codigo, c.letra, c.numero, c.id_tipo_vehiculo,
-              tv.nombre AS tipo, tv.codigo AS tipo_codigo,
-              c.activa, c.en_mantenimiento, c.fecha_creacion,
-              NULL AS placa_asignada,
-              (SELECT v.placa FROM accesos_vehiculos a
-                INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
-                WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
-                LIMIT 1) AS placa_ocupante,
-              ${ESTADO_SQL} AS estado
-       FROM celdas c
-       INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo
-       WHERE c.id_celda = ?`,
-      [req.params.id],
-    );
-    if (filas.length === 0) {
-      return res.status(404).json({ error: "Celda no encontrada" });
-    }
-    res.json(filas[0]);
+    const [celda] = await query(`${SELECT_CELDA} WHERE c.id_celda = ?`, [
+      req.params.id,
+    ]);
+    if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
+    res.json(celda);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al obtener la celda" });
+    manejar(res, err, "Error al obtener la celda");
   }
 };
 
-/**
- * @function crearCelda
- * @description Registra una nueva celda en el sistema.
- * Valida límites de capacidad física (Máx 70 carros / 10 motos).
- * @param {import('express').Request} req - Body: { letra, numero, id_tipo_vehiculo }.
- * @param {import('express').Response} res
- * @returns {Promise<void>} JSON con la celda creada (201).
- */
 export const crearCelda = async (req, res) => {
   try {
     const { letra, numero, id_tipo_vehiculo } = req.body ?? {};
@@ -223,233 +107,167 @@ export const crearCelda = async (req, res) => {
         .status(400)
         .json({ error: "Letra, numero y tipo de vehiculo son obligatorios" });
     }
-    if (!/^[A-Za-z]$/.test(String(letra))) {
+    if (!/^[A-Za-z]$/.test(String(letra)))
       return res
         .status(400)
         .json({ error: "El bloque debe ser una sola letra (A-Z)" });
-    }
-    const n = Number.parseInt(numero, 10);
-    if (!Number.isFinite(n) || n < 1) {
+    const n = Number(numero);
+    if (!Number.isInteger(n) || n < 1)
       return res
         .status(400)
-        .json({ error: "El numero de celda debe ser mayor o igual a 1" });
-    }
-
-    const tipos = await query(
-      `SELECT id_tipo_vehiculo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
-      [id_tipo_vehiculo],
-    );
-    if (tipos.length === 0) {
-      return res.status(400).json({ error: "Tipo de vehiculo invalido" });
-    }
-
-    const existentes = await query(
-      `SELECT id_celda FROM celdas WHERE letra = ? AND numero = ? LIMIT 1`,
-      [String(letra).toUpperCase(), n],
-    );
-    if (existentes.length > 0) {
-      return res
-        .status(409)
-        .json({ error: "Ya existe una celda con esa letra y numero" });
-    }
-
-    const [tipoInfo] = await query(
-      `SELECT codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
-      [id_tipo_vehiculo],
-    );
-    const maxPorTipo =
-      tipoInfo?.codigo === "carro"
-        ? 70
-        : tipoInfo?.codigo === "moto"
-          ? 10
-          : null;
-    if (maxPorTipo !== null) {
-      const [countRows] = await query(
-        `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?`,
-        [id_tipo_vehiculo],
-      );
-      const totalActual = Number(
-        (Array.isArray(countRows) ? countRows[0] : countRows)?.total ?? 0,
-      );
-      if (totalActual >= maxPorTipo) {
-        return res.status(400).json({
-          error: `No se pueden crear más de ${maxPorTipo} celdas para ${tipoInfo.codigo}`,
+        .json({
+          error: "El numero de celda debe ser un entero mayor o igual a 1",
         });
-      }
-    }
 
+    const [tipo] = await query(
+      `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
+      [id_tipo_vehiculo],
+    );
+    if (!tipo)
+      return res.status(400).json({ error: "Tipo de vehiculo invalido" });
+
+    const max = limiteCeldas(tipo.codigo);
+    if (max !== null) {
+      const [{ total }] = await query(
+        `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?`,
+        [tipo.id_tipo_vehiculo],
+      );
+      if (Number(total) >= max)
+        return res
+          .status(400)
+          .json({
+            error: `No se pueden crear más de ${max} celdas para ${tipo.codigo}`,
+          });
+    }
     const r = await query(
       `INSERT INTO celdas (id_tipo_vehiculo, letra, numero) VALUES (?, ?, ?)`,
-      [id_tipo_vehiculo, String(letra).toUpperCase(), n],
+      [tipo.id_tipo_vehiculo, String(letra).toUpperCase(), n],
     );
-    const filas = await query(
-      `SELECT id_celda, codigo, letra, numero, id_tipo_vehiculo, activa, en_mantenimiento
-       FROM celdas WHERE id_celda = ?`,
+    const [celda] = await query(
+      `SELECT id_celda, codigo, letra, numero, id_tipo_vehiculo, activa, en_mantenimiento FROM celdas WHERE id_celda = ?`,
       [r.insertId],
     );
-    res.status(201).json(filas[0]);
+    res.status(201).json(celda);
   } catch (err) {
-    if (err.code === "ER_DUP_ENTRY") {
+    if (err.code === "ER_DUP_ENTRY")
       return res
         .status(409)
         .json({ error: "Ya existe una celda con esa letra y numero" });
-    }
-    console.error(err);
-    res.status(500).json({ error: "Error al crear la celda" });
+    manejar(res, err, "Error al crear la celda");
   }
 };
 
-/**
- * @function actualizarCelda
- * @description Modifica el tipo de vehículo permitido en una celda.
- * Solo se permite si la celda está actualmente libre.
- * @param {import('express').Request} req - Body: { id_tipo_vehiculo }.
- * @param {import('express').Response} res
- */
 export const actualizarCelda = async (req, res) => {
   try {
-    const { id_tipo_vehiculo } = req.body ?? {};
-    if (!id_tipo_vehiculo) {
+    const idTipo = Number(req.body?.id_tipo_vehiculo);
+    if (!Number.isInteger(idTipo) || idTipo < 1)
       return res
         .status(400)
         .json({ error: "El tipo de vehiculo es obligatorio" });
-    }
 
     const [celda] = await query(
-      `SELECT c.id_celda, c.id_tipo_vehiculo,
-              (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = c.id_celda AND m.fecha_salida IS NULL) AS ocupada
-       FROM celdas c WHERE c.id_celda = ?`,
+      `SELECT c.id_celda, c.id_tipo_vehiculo, ${SQL_OCUPADA} AS ocupada FROM celdas c WHERE c.id_celda = ?`,
       [req.params.id],
     );
-    if (!celda) {
-      return res.status(404).json({ error: "Celda no encontrada" });
-    }
+    if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
+    if (Number(celda.ocupada))
+      return res
+        .status(400)
+        .json({ error: "No se puede cambiar el tipo de una celda ocupada" });
 
-    if (celda.ocupada > 0) {
-      return res.status(400).json({
-        error: "No se puede cambiar el tipo de una celda ocupada",
-      });
-    }
-
-    const tipos = await query(
-      `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ? LIMIT 1`,
-      [id_tipo_vehiculo],
+    const [tipo] = await query(
+      `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
+      [idTipo],
     );
-    if (tipos.length === 0) {
+    if (!tipo)
       return res.status(400).json({ error: "Tipo de vehiculo invalido" });
-    }
 
-    if (celda.id_tipo_vehiculo !== id_tipo_vehiculo) {
-      const limiteMaximo = tipos[0].codigo === "carro" ? 70 : 10;
+    if (celda.id_tipo_vehiculo !== idTipo) {
+      const max = limiteCeldas(tipo.codigo);
       const [{ total }] = await query(
         `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?`,
-        [id_tipo_vehiculo],
+        [idTipo],
       );
-      if (total >= limiteMaximo) {
-        return res.status(400).json({
-          error: `No se puede cambiar el tipo: se ha alcanzado la capacidad maxima de ${limiteMaximo} celdas para ${tipos[0].codigo}s.`,
-        });
+      if (max !== null && Number(total) >= max) {
+        return res
+          .status(400)
+          .json({
+            error: `No se puede cambiar el tipo: se ha alcanzado la capacidad maxima de ${max} celdas para ${tipo.codigo}s.`,
+          });
       }
     }
-
     await query(`UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?`, [
-      id_tipo_vehiculo,
+      idTipo,
       req.params.id,
     ]);
     res.json({ mensaje: "Tipo de celda actualizado correctamente" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al actualizar la celda" });
+    manejar(res, err, "Error al actualizar la celda");
   }
 };
 
 /**
- * POST /api/celdas/intercambiar-tipo
- * @description Intercambia los tipos de dos celdas libres de forma atómica.
+ * Intercambia el tipo de dos celdas libres.
+ * BUG CRÍTICO corregido: antes se usaba query("START TRANSACTION") sobre el pool; cada query
+ * puede salir por una conexión distinta, así que no había transacción y un fallo a mitad dejaba
+ * dos celdas del mismo tipo. Ahora es una transacción real con FOR UPDATE (también evita carreras con un ingreso).
  */
 export const intercambiarTipoCelda = async (req, res) => {
-  const { id_celda_1, id_celda_2 } = req.body;
-
-  if (!id_celda_1 || !id_celda_2) {
-    return res.status(400).json({ error: "Ambos IDs de celda son obligatorios" });
+  const a = Number(req.body?.id_celda_1),
+    b = Number(req.body?.id_celda_2);
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1) {
+    return res
+      .status(400)
+      .json({ error: "Ambos IDs de celda son obligatorios" });
   }
-
+  if (a === b)
+    return res.status(400).json({ error: "Debe elegir dos celdas distintas" });
   try {
-    // 1. Obtener información de ambas celdas
-    const [c1, c2] = await Promise.all([
-      query(
-        `SELECT id_celda, id_tipo_vehiculo,
-                (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = celdas.id_celda AND m.fecha_salida IS NULL) AS ocupada
-         FROM celdas WHERE id_celda = ?`,
-        [id_celda_1],
-      ).then((r) => r[0]),
-      query(
-        `SELECT id_celda, id_tipo_vehiculo,
-                (SELECT COUNT(*) FROM accesos_vehiculos m WHERE m.id_celda = celdas.id_celda AND m.fecha_salida IS NULL) AS ocupada
-         FROM celdas WHERE id_celda = ?`,
-        [id_celda_2],
-      ).then((r) => r[0]),
-    ]);
-
-    if (!c1 || !c2) {
-      return res.status(404).json({ error: "Una o ambas celdas no existen" });
-    }
-
-    if (c1.ocupada > 0 || c2.ocupada > 0) {
-      return res.status(400).json({ error: "No se pueden intercambiar tipos de celdas ocupadas" });
-    }
-
-    if (c1.id_tipo_vehiculo === c2.id_tipo_vehiculo) {
-      return res.status(400).json({ error: "Las celdas ya son del mismo tipo" });
-    }
-
-    // 2. Realizar el intercambio en una transacción
-    await query("START TRANSACTION");
-    try {
-      await query("UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?", [
-        c2.id_tipo_vehiculo,
-        c1.id_celda,
-      ]);
-      await query("UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?", [
-        c1.id_tipo_vehiculo,
-        c2.id_celda,
-      ]);
-      await query("COMMIT");
-    } catch (error) {
-      await query("ROLLBACK");
-      throw error;
-    }
-
+    await conTransaccion(async (conn) => {
+      const [filas] = await conn.query(
+        `SELECT c.id_celda, c.id_tipo_vehiculo, ${SQL_OCUPADA} AS ocupada FROM celdas c WHERE c.id_celda IN (?, ?) FOR UPDATE`,
+        [a, b],
+      );
+      if (filas.length !== 2)
+        throw new ErrorNegocio(404, "Una o ambas celdas no existen");
+      const [c1, c2] = [
+        filas.find((f) => f.id_celda === a),
+        filas.find((f) => f.id_celda === b),
+      ];
+      if (Number(c1.ocupada) || Number(c2.ocupada))
+        throw new ErrorNegocio(
+          400,
+          "No se pueden intercambiar tipos de celdas ocupadas",
+        );
+      if (c1.id_tipo_vehiculo === c2.id_tipo_vehiculo)
+        throw new ErrorNegocio(400, "Las celdas ya son del mismo tipo");
+      await conn.query(
+        `UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?`,
+        [c2.id_tipo_vehiculo, c1.id_celda],
+      );
+      await conn.query(
+        `UPDATE celdas SET id_tipo_vehiculo = ? WHERE id_celda = ?`,
+        [c1.id_tipo_vehiculo, c2.id_celda],
+      );
+    });
     res.json({ mensaje: "Intercambio de tipos realizado correctamente" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al realizar el intercambio" });
+    manejar(res, err, "Error al realizar el intercambio");
   }
 };
 
-/**
- * @function cambiarEstadoCelda
- * @description Gestiona el estado administrativo (Activa/Inactiva) y técnico (Mantenimiento).
- * Si se marca mantenimiento, se debe especificar la duración. No se puede inactivar una celda ocupada.
- * @param {import('express').Request} req - Body: { activa, en_mantenimiento, minutos_mantenimiento }.
- * @param {import('express').Response} res
- */
 export const cambiarEstadoCelda = async (req, res) => {
   try {
     await liberarMantenimientosExpirados();
     const { activa, en_mantenimiento } = req.body ?? {};
     const [celda] = await query(
-      `SELECT c.id_celda, c.codigo, c.activa, c.en_mantenimiento,
-              (SELECT COUNT(*) FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL) AS ocupada
-       FROM celdas c WHERE c.id_celda = ?`,
+      `SELECT c.id_celda, c.activa, c.en_mantenimiento, ${SQL_OCUPADA} AS ocupada FROM celdas c WHERE c.id_celda = ?`,
       [req.params.id],
     );
-    if (!celda) {
-      return res.status(404).json({ error: "Celda no encontrada" });
-    }
+    if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
 
-    const cambios = [];
-    const params = [];
+    const cambios = [],
+      params = [];
     if (typeof activa === "boolean") {
       cambios.push(`activa = ?`);
       params.push(activa);
@@ -459,12 +277,14 @@ export const cambiarEstadoCelda = async (req, res) => {
       params.push(en_mantenimiento);
       if (en_mantenimiento) {
         const minutos = Number(
-          req.body?.minutos_mantenimiento ?? req.body?.duracion_minutos ?? 60,
+          req.body.minutos_mantenimiento ?? req.body.duracion_minutos ?? 60,
         );
         if (!Number.isFinite(minutos) || minutos < 1) {
-          return res.status(400).json({
-            error: "La duracion del mantenimiento debe ser mayor a 0 minutos",
-          });
+          return res
+            .status(400)
+            .json({
+              error: "La duracion del mantenimiento debe ser mayor a 0 minutos",
+            });
         }
         cambios.push(
           `mantenimiento_hasta = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE)`,
@@ -474,157 +294,108 @@ export const cambiarEstadoCelda = async (req, res) => {
         cambios.push(`mantenimiento_hasta = NULL`);
       }
     }
-    if (cambios.length === 0) {
+    if (!cambios.length)
       return res
         .status(400)
         .json({ error: "Debe indicar activa y/o en_mantenimiento" });
-    }
 
     const vaInactiva = typeof activa === "boolean" ? !activa : !celda.activa;
-    const vaMantenimiento =
+    const vaMant =
       typeof en_mantenimiento === "boolean"
         ? en_mantenimiento
-        : celda.en_mantenimiento;
-    if (vaInactiva || vaMantenimiento) {
-      const [ocupada] = await query(
-        `SELECT id_acceso FROM accesos_vehiculos WHERE id_celda = ? AND fecha_salida IS NULL LIMIT 1`,
-        [req.params.id],
-      );
-      if (ocupada) {
-        return res.status(400).json({
+        : !!celda.en_mantenimiento;
+    if ((vaInactiva || vaMant) && Number(celda.ocupada)) {
+      return res
+        .status(400)
+        .json({
           error:
             "No se puede deshabilitar una celda ocupada. Registre la salida primero.",
         });
-      }
     }
-
-    params.push(req.params.id);
-    await query(
-      `UPDATE celdas SET ${cambios.join(", ")} WHERE id_celda = ?`,
-      params,
-    );
+    await query(`UPDATE celdas SET ${cambios.join(", ")} WHERE id_celda = ?`, [
+      ...params,
+      req.params.id,
+    ]);
     res.json({ mensaje: "Estado de la celda actualizado correctamente" });
   } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({ error: "Error al actualizar el estado de la celda" });
+    manejar(res, err, "Error al actualizar el estado de la celda");
   }
 };
 
-/**
- * @function eliminarCelda
- * @description Elimina físicamente una celda.
- * Solo se permite si la celda no está ocupada y nunca ha tenido historial de accesos registrados (integridad referencial).
- * @param {import('express').Request} req - Params: id.
- * @param {import('express').Response} res
- */
 export const eliminarCelda = async (req, res) => {
   try {
     const id = req.params.id;
     const [celda] = await query(
-      `SELECT id_celda, codigo FROM celdas WHERE id_celda = ?`,
+      `SELECT c.id_celda, ${SQL_OCUPADA} AS ocupada,
+              EXISTS (SELECT 1 FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda) AS historial
+       FROM celdas c WHERE c.id_celda = ?`,
       [id],
     );
     if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
-
-    const [ocupada] = await query(
-      `SELECT id_acceso FROM accesos_vehiculos WHERE id_celda = ? AND fecha_salida IS NULL LIMIT 1`,
-      [id],
-    );
-    if (ocupada) {
+    if (Number(celda.ocupada))
       return res
         .status(400)
         .json({ error: "No se puede eliminar una celda ocupada" });
-    }
-
-    const [historial] = await query(
-      `SELECT id_acceso FROM accesos_vehiculos WHERE id_celda = ? LIMIT 1`,
-      [id],
-    );
-    if (historial) {
-      return res.status(400).json({
-        error: "No se puede eliminar una celda con historial de accesos",
-      });
-    }
-
+    if (Number(celda.historial))
+      return res
+        .status(400)
+        .json({
+          error: "No se puede eliminar una celda con historial de accesos",
+        });
     await query(`DELETE FROM celdas WHERE id_celda = ?`, [id]);
     res.json({ mensaje: "Celda eliminada correctamente" });
   } catch (err) {
-    if (err.code === "ER_ROW_IS_REFERENCED_2") {
-      return res.status(400).json({
-        error: "No se puede eliminar la celda porque tiene registros asociados",
-      });
-    }
-    console.error(err);
-    res.status(500).json({ error: "Error al eliminar la celda" });
+    if (err.code === "ER_ROW_IS_REFERENCED_2")
+      return res
+        .status(400)
+        .json({
+          error:
+            "No se puede eliminar la celda porque tiene registros asociados",
+        });
+    manejar(res, err, "Error al eliminar la celda");
   }
 };
 
-/**
- * @function resumenCeldas
- * @description Genera estadísticas agregadas del estado de las celdas (totales, libres, ocupadas, no disponibles).
- * Utilizado para los dashboards de administrador y operador.
- * @param {import('express').Request} _req
- * @param {import('express').Response} res
- */
+/** Resumen por tipo. Una sola consulta (antes dos con el CASE repetido 10 veces) y totales sumados en JS. */
 export const resumenCeldas = async (_req, res) => {
   try {
     await liberarMantenimientosExpirados();
     const filas = await query(
-      `SELECT
-         tv.codigo AS tipo,
-         COUNT(*) AS total,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'libre' THEN 1 ELSE 0 END) AS libres,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'asignada' THEN 1 ELSE 0 END) AS asignadas,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
-         SUM(CASE WHEN ${ESTADO_SQL} IN ('inactiva','en mantenimiento') THEN 1 ELSE 0 END) AS no_disponibles
-       FROM celdas c
-       INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo
-       GROUP BY tv.codigo
-       ORDER BY tv.codigo`,
+      `SELECT tipo, COUNT(*) AS total,
+              SUM(estado = 'libre') AS libres, SUM(estado = 'ocupada') AS ocupadas,
+              SUM(estado IN ('inactiva','en mantenimiento')) AS no_disponibles
+       FROM (SELECT tv.codigo AS tipo, ${ESTADO_SQL} AS estado
+             FROM celdas c INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo) t
+       GROUP BY tipo ORDER BY tipo`,
     );
-
-    const [totalesRows] = await query(
-      `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'libre' THEN 1 ELSE 0 END) AS libres,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'asignada' THEN 1 ELSE 0 END) AS asignadas,
-         SUM(CASE WHEN ${ESTADO_SQL} = 'ocupada' THEN 1 ELSE 0 END) AS ocupadas,
-         SUM(CASE WHEN ${ESTADO_SQL} IN ('inactiva','en mantenimiento') THEN 1 ELSE 0 END) AS no_disponibles
-       FROM celdas c`,
-    );
-    const totales = totalesRows;
-
-    res.json({ porTipo: filas, totales });
+    const porTipo = filas.map((f) => ({
+      tipo: f.tipo,
+      total: Number(f.total),
+      libres: Number(f.libres),
+      asignadas: 0,
+      ocupadas: Number(f.ocupadas),
+      no_disponibles: Number(f.no_disponibles),
+    }));
+    const suma = (k) => porTipo.reduce((s, f) => s + f[k], 0);
+    res.json({
+      porTipo,
+      totales: {
+        total: suma("total"),
+        libres: suma("libres"),
+        asignadas: 0,
+        ocupadas: suma("ocupadas"),
+        no_disponibles: suma("no_disponibles"),
+      },
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al generar el resumen de celdas" });
+    manejar(res, err, "Error al generar el resumen de celdas");
   }
 };
 
-/**
- * @function celdasPorBloque
- * @description Obtiene todas las celdas agrupadas por su letra de bloque (A, B, C...).
- * Optimizado para la representación visual tipo mapa en el frontend.
- * @param {import('express').Request} _req
- * @param {import('express').Response} res
- */
 export const celdasPorBloque = async (_req, res) => {
   try {
     await liberarMantenimientosExpirados();
-    const filas = await query(
-      `SELECT c.id_celda, c.codigo, c.letra, c.numero, c.id_tipo_vehiculo,
-              tv.nombre AS tipo, tv.codigo AS tipo_codigo,
-              c.activa, c.en_mantenimiento, ${ESTADO_SQL} AS estado,
-              (SELECT v.placa FROM accesos_vehiculos a
-                 INNER JOIN vehiculos v ON v.id_vehiculo = a.id_vehiculo
-                 WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL
-                 LIMIT 1) AS placa_ocupante
-       FROM celdas c
-       INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = c.id_tipo_vehiculo
-       ORDER BY c.letra, c.numero`,
-    );
+    const filas = await query(`${SELECT_CELDA} ORDER BY c.letra, c.numero`);
     const porBloque = new Map();
     for (const f of filas) {
       if (!porBloque.has(f.letra)) porBloque.set(f.letra, []);
@@ -643,18 +414,10 @@ export const celdasPorBloque = async (_req, res) => {
     }
     res.json([...porBloque].map(([bloque, celdas]) => ({ bloque, celdas })));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al obtener las celdas por bloque" });
+    manejar(res, err, "Error al obtener las celdas por bloque");
   }
 };
 
-/** 
- * @function listarTipos
- * @description Obtiene los tipos de vehículos activos en el sistema (ej. Carro, Moto) con sus tarifas base.
- * Usado para llenar desplegables en la interfaz gráfica.
- * @param {import('express').Request} _req
- * @param {import('express').Response} res
- */
 export const listarTipos = async (_req, res) => {
   try {
     res.json(
@@ -663,8 +426,7 @@ export const listarTipos = async (_req, res) => {
       ),
     );
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al obtener los tipos de vehiculo" });
+    manejar(res, err, "Error al obtener los tipos de vehiculo");
   }
 };
 
@@ -674,6 +436,7 @@ export default {
   obtenerCelda,
   crearCelda,
   actualizarCelda,
+  intercambiarTipoCelda,
   cambiarEstadoCelda,
   eliminarCelda,
   resumenCeldas,

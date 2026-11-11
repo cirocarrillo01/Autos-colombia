@@ -13,7 +13,9 @@
     "start": "node src/server.js",
     "seed": "node src/seed/seed.js",
     "seed:reset": "node src/seed/seed.js --reset",
-    "test": "node --test --test-force-exit test/**/*.test.js"
+    "test": "node --test --test-force-exit test/**/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/**/*.test.js",
+    "sonar": "sonar-scanner-npm"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -25,6 +27,8 @@
     "mysql2": "^3.11.0"
   },
   "devDependencies": {
+    "@sonar/scan": "^5.1.0",
+    "jest": "^30.5.2",
     "nodemon": "^3.1.14"
   }
 }

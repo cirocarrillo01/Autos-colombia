@@ -1,63 +1,61 @@
-﻿//backend/src/services/authService.js
-// Lógica de negocio de autenticación: registro, login, cambio/restablecimiento de clave,
-// control de intentos fallidos (fuerza bruta) y registro de último acceso.
-
+﻿// Autenticación: login, registro, restablecer clave, logout y refresh.
 import bcrypt from "bcryptjs";
 import { generarToken, verificarToken } from "../middleware/authMiddleware.js";
 import * as userRepository from "../repositories/userRepository.js";
 import * as refreshTokenRepository from "../repositories/refreshTokenRepository.js";
 import * as revokedTokenRepository from "../repositories/revokedTokenRepository.js";
 import * as auditRepository from "../repositories/auditRepository.js";
-import { query } from "../config/db.js";
 
-const MAX_INTENTOS_FALLIDOS = 5;
-const VENTANA_INTENTOS_MINUTOS = 15;
+export const MAX_INTENTOS_FALLIDOS = 5;
+export const VENTANA_INTENTOS_MINUTOS = 15;
+// Hash falso para gastar el mismo tiempo cuando el usuario no existe (evita enumerar usuarios por latencia).
+const HASH_FALSO = bcrypt.hashSync("clave-falsa-para-igualar-tiempos", 10);
 
 /**
- * Obtiene la IP real del cliente.
- * @param {import('express').Request} req 
- * @returns {string} IP del cliente
+ * IP del cliente. Se usa req.ip (respeta TRUST_PROXY). Antes se confiaba ciegamente en el
+ * header X-Forwarded-For, así que cualquiera esquivaba el bloqueo por IP cambiándolo.
  */
-const obtenerIp = (req) => {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return req.ip || req.connection.remoteAddress || "desconocida";
-};
+export const obtenerIp = (req) =>
+  req.ip || req.socket?.remoteAddress || "desconocida";
 
 const errorAuth = () => ({ status: 401, error: "Usuario o clave incorrectos" });
+const perfil = (u) => ({
+  id_usuario: u.id_usuario,
+  usuario_login: u.usuario_login,
+  rol: u.rol,
+  nombres: u.nombres,
+  apellidos: u.apellidos,
+  nombreCompleto: `${u.nombres} ${u.apellidos}`,
+  estado: u.estado,
+});
 
-/**
- * Inicia sesión de un usuario.
- * @param {import('express').Request} req 
- * @param {Object} credentials - { usuario_login, clave }
- * @returns {Promise<{status: number, body?: Object, error?: string}>}
- */
-export const login = async (req, { usuario_login: loginCrudo, clave }) => {
-  loginCrudo = String(loginCrudo ?? "")
+export const login = async (req, { usuario_login, clave } = {}) => {
+  const login = String(usuario_login ?? "")
     .trim()
     .slice(0, 40);
-
-  if (!loginCrudo || !clave) {
+  if (!login || !clave)
     return { status: 400, error: "Usuario y clave son obligatorios" };
-  }
+
   const ip = obtenerIp(req);
-  const fallidosUsuario = await userRepository.contarFallidosRecientes({
-    usuario_login: loginCrudo,
-    minutos: VENTANA_INTENTOS_MINUTOS,
-  });
-  const fallidosIp = await userRepository.contarFallidosRecientes({
-    ip_address: ip,
-    minutos: VENTANA_INTENTOS_MINUTOS,
-  });
-  if (
-    fallidosUsuario >= MAX_INTENTOS_FALLIDOS ||
-    fallidosIp >= MAX_INTENTOS_FALLIDOS
-  ) {
-    await userRepository.registrarIntento({
-      usuario_login: loginCrudo,
-      exitoso: false,
+  const intento = (exitoso) =>
+    userRepository.registrarIntento({
+      usuario_login: login,
+      exitoso,
       ip_address: ip,
     });
+
+  const [porUsuario, porIp] = await Promise.all([
+    userRepository.contarFallidosRecientes({
+      usuario_login: login,
+      minutos: VENTANA_INTENTOS_MINUTOS,
+    }),
+    userRepository.contarFallidosRecientes({
+      ip_address: ip,
+      minutos: VENTANA_INTENTOS_MINUTOS,
+    }),
+  ]);
+  if (porUsuario >= MAX_INTENTOS_FALLIDOS || porIp >= MAX_INTENTOS_FALLIDOS) {
+    // No se registra otro intento: antes cada intento bloqueado ampliaba el bloqueo indefinidamente.
     return {
       status: 423,
       error:
@@ -65,47 +63,25 @@ export const login = async (req, { usuario_login: loginCrudo, clave }) => {
     };
   }
 
-  const usuario = await userRepository.findByLogin(loginCrudo);
-  if (!usuario) {
-    await userRepository.registrarIntento({
-      usuario_login: loginCrudo,
-      exitoso: false,
-      ip_address: ip,
-    });
+  const usuario = await userRepository.findByLogin(login);
+  const coincide = await bcrypt.compare(
+    String(clave),
+    usuario?.clave_hash ?? HASH_FALSO,
+  );
+  if (!usuario || !coincide) {
+    await intento(false);
     return errorAuth();
   }
-
   if (usuario.estado !== "activo") {
-    await userRepository.registrarIntento({
-      usuario_login: loginCrudo,
-      exitoso: false,
-      ip_address: ip,
-    });
-    return {
-      status: 403,
-      error: "Usuario inactivo. No puede iniciar sesión.",
-    };
+    await intento(false);
+    return { status: 403, error: "Usuario inactivo. No puede iniciar sesión." };
   }
 
-  const coincide = await bcrypt.compare(String(clave), usuario.clave_hash);
-  if (!coincide) {
-    await userRepository.registrarIntento({
-      usuario_login: loginCrudo,
-      exitoso: false,
-      ip_address: ip,
-    });
-    return errorAuth();
-  }
-
-  await userRepository.registrarIntento({
-    usuario_login: loginCrudo,
-    exitoso: true,
-    ip_address: ip,
-  });
+  await intento(true);
   await userRepository.registrarUltimoAcceso(usuario.id_usuario);
   await userRepository.registrarSesionActiva(usuario.id_usuario);
   const token = generarToken(usuario.id_usuario);
-  const refreshToken = await refreshTokenRepository.crearRefreshToken(
+  const refresh_token = await refreshTokenRepository.crearRefreshToken(
     usuario.id_usuario,
   );
   await auditRepository.registrarAudit({
@@ -118,118 +94,89 @@ export const login = async (req, { usuario_login: loginCrudo, clave }) => {
   });
   return {
     status: 200,
-    body: {
-      token,
-      refresh_token: refreshToken,
-      usuario: {
-        id_usuario: usuario.id_usuario,
-        usuario_login: usuario.usuario_login,
-        rol: usuario.rol,
-        nombres: usuario.nombres,
-        apellidos: usuario.apellidos,
-        nombreCompleto: `${usuario.nombres} ${usuario.apellidos}`,
-        estado: usuario.estado,
-      },
-    },
+    body: { token, refresh_token, usuario: perfil(usuario) },
   };
 };
 
-/**
- * Registra un nuevo usuario en el sistema.
- * @param {Object} datos - Datos del usuario.
- * @returns {Promise<{status: number, body?: Object, error?: string}>}
- */
-export const registrar = async (datos) => {
-  const {
-    rol, tipo_documento, documento, nombres,
-    apellidos, telefono, email, usuario_login, clave,
-  } = datos;
+/** Campo que provocó el duplicado (antes podía quedar vacío: "ese ."). */
+export function campoDuplicado(dup, datos) {
+  if (
+    dup.tipo_documento === datos.tipo_documento &&
+    String(dup.documento) === String(datos.documento)
+  )
+    return "documento";
+  if (
+    String(dup.usuario_login).toLowerCase() ===
+    String(datos.usuario_login).toLowerCase()
+  )
+    return "usuario de acceso";
+  if (
+    datos.email &&
+    dup.email &&
+    dup.email.toLowerCase() === String(datos.email).toLowerCase()
+  )
+    return "correo";
+  return "dato único";
+}
 
-  if (String(documento).length < 5 || String(documento).length > 20) {
-    return { status: 400, error: "El documento debe tener entre 5 y 20 caracteres" };
-  }
-  if (String(clave).length < 4) {
-    return { status: 400, error: "La clave debe tener al menos 4 caracteres" };
-  }
-
-  const duplicado = await userRepository.findDuplicate({
-    tipo_documento,
-    documento,
-    usuario_login,
-    email: email || undefined,
+/** Crea el usuario. La validación de campos ya la hizo validarDatosUsuario en el controlador. `actor` = admin que lo crea. */
+export const registrar = async (datos, actor = null) => {
+  const dup = await userRepository.findDuplicate({
+    tipo_documento: datos.tipo_documento,
+    documento: datos.documento,
+    usuario_login: datos.usuario_login,
+    email: datos.email || undefined,
   });
-  if (duplicado) {
-    let campo = "";
-    if (duplicado.tipo_documento === tipo_documento && duplicado.documento === documento)
-      campo = "documento";
-    else if (duplicado.usuario_login === usuario_login)
-      campo = "usuario de acceso";
-    else if (email && duplicado.email === email) campo = "correo";
+  if (dup)
     return {
       status: 409,
-      error: `Ya existe un usuario registrado con ese ${campo}.`,
+      error: `Ya existe un usuario registrado con ese ${campoDuplicado(dup, datos)}.`,
     };
-  }
 
-  const clave_hash = await bcrypt.hash(String(clave), 10);
+  const clave_hash = await bcrypt.hash(String(datos.clave), 10);
+  const { insertId } = await userRepository.create({ ...datos, clave_hash });
 
-  const { insertId } = await userRepository.create({
-    rol, tipo_documento, documento, nombres,
-    apellidos, telefono, email, usuario_login, clave_hash,
-  });
-
+  // Antes el audit se guardaba a nombre del usuario recién creado, no de quien lo creó.
   await auditRepository.registrarAudit({
-    id_usuario: insertId,
-    usuario_login: usuario_login,
+    id_usuario: actor?.id_usuario ?? null,
+    usuario_login: actor?.usuario_login ?? null,
     accion: "CREATE_USER",
     recurso: "usuarios",
-    detalle: `Usuario creado: ${usuario_login} (${rol})`,
+    detalle: `Usuario creado: ${datos.usuario_login} (${datos.rol})`,
   });
-
-  const creado = await userRepository.findById(insertId);
+  const c = await userRepository.findById(insertId);
   return {
     status: 201,
     body: {
-      id_usuario: creado.id_usuario,
-      usuario_login: creado.usuario_login,
-      rol: creado.rol,
-      nombres: creado.nombres,
-      apellidos: creado.apellidos,
-      email: creado.email,
+      id_usuario: c.id_usuario,
+      usuario_login: c.usuario_login,
+      rol: c.rol,
+      nombres: c.nombres,
+      apellidos: c.apellidos,
+      email: c.email,
     },
   };
 };
 
-/**
- * Restablece la clave de un usuario y revoca sesiones activas.
- * @param {Object} params - { idUsuario, claveNueva, adminId }
- * @returns {Promise<{status: number, body?: Object, error?: string}>}
- */
 export const restablecerClave = async ({ idUsuario, claveNueva, adminId }) => {
   const usuario = await userRepository.findById(idUsuario);
-  if (!usuario) {
-    return { status: 404, error: "Usuario no encontrado" };
-  }
+  if (!usuario) return { status: 404, error: "Usuario no encontrado" };
 
-  const clave_hash = await bcrypt.hash(String(claveNueva), 10);
-  await userRepository.cambiarClave(idUsuario, clave_hash);
-
-  await refreshTokenRepository.revocarRefreshTokensUsuario(idUsuario);
-  await query(
-    `UPDATE usuarios SET sesion_activa = FALSE, fecha_sesion_activa = NULL WHERE id_usuario = ?`,
-    [idUsuario]
+  await userRepository.cambiarClave(
+    idUsuario,
+    await bcrypt.hash(String(claveNueva), 10),
   );
+  await refreshTokenRepository.revocarRefreshTokensUsuario(idUsuario);
+  await userRepository.cerrarSesionActiva(idUsuario);
 
   const admin = adminId ? await userRepository.findById(adminId) : null;
   await auditRepository.registrarAudit({
-    id_usuario: adminId,
+    id_usuario: adminId ?? null,
     usuario_login: admin?.usuario_login ?? "sistema",
     accion: "RESET_PASSWORD",
     recurso: "usuarios",
     detalle: `Clave restablecida y sesiones revocadas para ${usuario.usuario_login}`,
-    ip_address: "desconocida",
   });
-
   return {
     status: 200,
     body: {
@@ -238,92 +185,64 @@ export const restablecerClave = async ({ idUsuario, claveNueva, adminId }) => {
   };
 };
 
-/**
- * Valida la clave de un usuario dado (para re-autenticación administrativa).
- * @param {Object} params - { usuario_login, clave }
- * @returns {Promise<{status: number, body?: Object, error?: string}>}
- */
+/** Re-autenticación (step-up). Si `clave` falta devuelve 400 sin llamar a bcrypt con "undefined". */
 export const verificarClaveUsuario = async ({ usuario_login, clave }) => {
+  if (!clave) return { status: 400, error: "La clave es obligatoria" };
   const usuario = await userRepository.findByLogin(usuario_login);
   if (!usuario) return { status: 404, error: "Usuario no encontrado" };
-  const coincide = await bcrypt.compare(String(clave), usuario.clave_hash);
-  if (!coincide) return { status: 400, error: "La clave es incorrecta" };
+  if (!(await bcrypt.compare(String(clave), usuario.clave_hash)))
+    return { status: 400, error: "La clave es incorrecta" };
   return { status: 200, body: { ok: true } };
 };
 
-/**
- * Cierra sesión y revoca tokens.
- * @param {Object} params - { idUsuario, token }
- * @returns {Promise<{status: number, body: Object}>}
- */
 export const logout = async ({ idUsuario, token }) => {
   const usuario = await userRepository.findById(idUsuario);
   if (token) {
     try {
-      const decoded = verificarToken(token);
-      if (decoded?.jti && decoded?.exp) {
+      const d = verificarToken(token);
+      if (d?.jti && d?.exp) {
         await revokedTokenRepository.revocarToken({
-          jti: decoded.jti,
+          jti: d.jti,
           id_usuario: idUsuario,
-          expires_at: new Date(decoded.exp * 1000),
+          expires_at: new Date(d.exp * 1000),
         });
       }
     } catch (e) {
-      console.log("LOGOUT revoke error", e.message);
+      console.warn("LOGOUT: no se pudo revocar el token:", e.message);
     }
   }
   await refreshTokenRepository.revocarRefreshTokensUsuario(idUsuario);
-  await query(
-    `UPDATE usuarios SET sesion_activa = FALSE, fecha_sesion_activa = NULL WHERE id_usuario = ?`,
-    [idUsuario],
-  );
+  await userRepository.cerrarSesionActiva(idUsuario);
   await auditRepository.registrarAudit({
     id_usuario: idUsuario,
     usuario_login: usuario?.usuario_login ?? null,
     accion: "LOGOUT",
     recurso: "auth",
     detalle: "Cierre de sesión",
-    ip_address: "desconocida",
   });
   return { status: 200, body: { ok: true } };
 };
 
-/**
- * Refresca el token de acceso.
- * @param {Object} params - { refresh_token }
- * @returns {Promise<{status: number, body?: Object, error?: string}>}
- */
 export const refresh = async ({ refresh_token }) => {
-  if (!refresh_token) {
-    return { status: 400, error: "Refresh token requerido" };
-  }
+  if (!refresh_token) return { status: 400, error: "Refresh token requerido" };
   const row = await refreshTokenRepository.validarRefreshToken(refresh_token);
-  if (!row) {
-    return { status: 401, error: "Refresh token inválido o expirado" };
-  }
-  await refreshTokenRepository.revocarRefreshToken(refresh_token);
-  const newRefresh = await refreshTokenRepository.crearRefreshToken(
-    row.id_usuario,
-  );
+  if (!row) return { status: 401, error: "Refresh token inválido o expirado" };
+
+  // Se valida al usuario ANTES de rotar (antes se emitía y revocaba tokens de usuarios inactivos).
   const usuario = await userRepository.findById(row.id_usuario);
-  if (!usuario || usuario.estado !== "activo") {
+  if (!usuario || usuario.estado !== "activo")
     return { status: 403, error: "Usuario inactivo" };
-  }
-  const token = generarToken(usuario.id_usuario);
+
+  await refreshTokenRepository.revocarRefreshToken(refresh_token);
+  const nuevo = await refreshTokenRepository.crearRefreshToken(
+    usuario.id_usuario,
+  );
   return {
     status: 200,
     body: {
-      token,
-      refresh_token: newRefresh,
-      usuario: {
-        id_usuario: usuario.id_usuario,
-        usuario_login: usuario.usuario_login,
-        rol: usuario.rol,
-        nombres: usuario.nombres,
-        apellidos: usuario.apellidos,
-        nombreCompleto: `${usuario.nombres} ${usuario.apellidos}`,
-        estado: usuario.estado,
-      },
+      token: generarToken(usuario.id_usuario),
+      refresh_token: nuevo,
+      usuario: perfil(usuario),
     },
   };
 };

@@ -5,7 +5,7 @@
 -- ============================================================================
 -- Modelo de negocio:
 --   * Cobro únicamente por mensualidad. No existen tarifas por hora/día.
---   * Cada vehículo mensual tiene una celda fija asignada.
+--   * Cada ingreso elige una celda libre rotativa del mismo tipo del vehículo.
 --   * Estado del cliente: pagado (mensualidad vigente) o en mora (vencida).
 --     -> Es estado DERIVADO por fechas; no se almacena.
 --   * Roles del sistema: administrador y operador.
@@ -18,7 +18,7 @@
 --   tipos_vehiculos     moto, carro, con tarifa_mensual
 --   celdas              spots físicos (letra-número) tipificados
 --   puertas             entradas/salidas; una sola de noche
---   vehiculos           placa + propietario + celda_fija + tipo
+--   vehiculos           placa + propietario + tipo
 --   turnos              caja por operador; uno abierto a la vez
 --   mensualidades       periodo contratado por vehículo
 --   pagos               pago de una mensualidad, dentro de un turno
@@ -211,7 +211,7 @@ CREATE TABLE pagos (
 CREATE TABLE accesos_vehiculos (
   id_acceso           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_vehiculo         INT UNSIGNED NOT NULL,
-  id_celda            SMALLINT UNSIGNED NOT NULL,       -- toma de vehiculos.id_celda_fija al ingresar
+  id_celda            SMALLINT UNSIGNED NOT NULL,       -- celda asignada en el ingreso (rotativa)
   id_puerta_ingreso   TINYINT UNSIGNED NOT NULL,
   id_puerta_salida    TINYINT UNSIGNED NULL,
   id_operador_ingreso INT UNSIGNED NOT NULL,
@@ -315,10 +315,23 @@ CREATE TABLE refresh_tokens (
   CONSTRAINT fk_refresh_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
 ) ENGINE=InnoDB;
 
-USE autos_colombia;
 
-SELECT *
-FROM vehiculos;
+-- ÍNDICES ADICIONALES PARA RENDIMIENTO Y MANTENIMIENTO
+CREATE INDEX IF NOT EXISTS ix_acceso_fecha_ingreso ON accesos_vehiculos (fecha_ingreso);
+CREATE INDEX IF NOT EXISTS ix_la_fecha ON login_attempts (fecha_intento);
 
-
+-- EVENTO PROGRAMADO DE PURGA (requiere event_scheduler = ON en el servidor MySQL)
+-- Borra registros antiguos de login_attempts y audit_log (más de 90 días).
+-- NOTA: Esta operación borra datos irreversiblemente. Descomentar y ajustar la
+-- política de retención solo después de definirla con el negocio y validar en staging.
+--
+-- CREATE EVENT IF NOT EXISTS ev_purga_login_attempts
+-- ON SCHEDULE EVERY 24 HOUR
+-- DO
+--   DELETE FROM login_attempts WHERE fecha_intento < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY);
+--
+-- CREATE EVENT IF NOT EXISTS ev_purga_audit_log
+-- ON SCHEDULE EVERY 24 HOUR
+-- DO
+--   DELETE FROM audit_log WHERE fecha < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY);
 

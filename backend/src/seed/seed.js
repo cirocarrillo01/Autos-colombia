@@ -268,7 +268,7 @@ async function main() {
     console.error("Error durante el seed:", err.message);
     process.exitCode = 1;
   } finally {
-    conn.release();
+    await conn.release();
     await pool.end();
   }
 }
@@ -288,6 +288,9 @@ async function asegurarAdmin(conn) {
   console.log("Administrador creado: usuario=admin, clave=123456");
 }
 
-main();
+main().catch((err) => {
+  console.error("Error no controlado en seed:", err);
+  process.exitCode = 1;
+});
 
 

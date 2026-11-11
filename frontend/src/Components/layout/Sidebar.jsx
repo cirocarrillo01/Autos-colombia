@@ -38,9 +38,14 @@ function Sidebar({ rol }) {
     return itemRoles.includes(rol);
   });
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
+  const handleLogout = () => {
+    logout()
+      .catch((error) => {
+        console.error("Error al cerrar sesión:", error);
+      })
+      .finally(() => {
+        navigate("/login", { replace: true });
+      });
   };
 
   return (

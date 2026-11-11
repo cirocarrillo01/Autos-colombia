@@ -1,0 +1,22 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5173",
+      "localStorage": [
+        {
+          "name": "ac_user",
+          "value": "{\"id_usuario\":1,\"usuario_login\":\"admin\",\"rol\":\"administrador\",\"nombres\":\"Admin\",\"apellidos\":\"Sistema\",\"nombreCompleto\":\"Admin Sistema\",\"email\":\"admin@autocolombia.com\",\"telefono\":\"1234567890\",\"estado\":\"activo\"}"
+        },
+        {
+          "name": "ac_token",
+          "value": "fake-jwt"
+        },
+        {
+          "name": "ac_refresh",
+          "value": "fake-refresh"
+        }
+      ]
+    }
+  ]
+}

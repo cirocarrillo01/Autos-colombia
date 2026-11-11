@@ -1,0 +1,16 @@
+{
+  "name": "auto-colombia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de gestión de parqueadero Auto Colombia (Backend Express + Frontend React)",
+  "type": "module",
+  "scripts": {
+    "test": "npm --prefix backend run test",
+    "test:coverage": "npm --prefix backend run test:coverage",
+    "sonar": "npx @sonar/scan",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "check": "npm run test:coverage && npm run test:e2e && npm run sonar",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  }
+}

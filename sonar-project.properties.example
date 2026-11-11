@@ -1,0 +1,20 @@
+sonar.projectKey=auto_parqueadero
+sonar.projectName=Auto_Parqueadero
+sonar.projectVersion=1.0.0
+
+# Servidor y autenticación (reemplaza TU_SONAR_TOKEN por tu token de SonarQube)
+sonar.host.url=http://localhost:9000
+sonar.token=TU_SONAR_TOKEN
+
+# Fuentes: Backend y Frontend combinados
+sonar.sources=backend/src,frontend/src
+
+# Exclusiones de análisis
+sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/.git/**,backend/test/**
+
+# Exclusiones de cobertura
+sonar.coverage.exclusions=**/test/**,**/*.test.js,**/*.test.jsx
+
+# Reporte de cobertura generado por las pruebas del backend
+sonar.javascript.lcov.reportPaths=backend/coverage/lcov.info
+sonar.sourceEncoding=UTF-8

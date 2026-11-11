@@ -59,6 +59,18 @@ Thumbs.db
 # Cobertura de pruebas
 coverage/
 .nyc_output/
+frontend/coverage/
+
+# Resultados de Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+
+# SonarQube
+.scannerwork/
+.sonar/
+# sonar-project.properties <- Es mejor mantenerlo si es la configuración del proyecto, pero ignoramos los reportes generados si los hubiera fuera de coverage
 
 # TypeScript (si se añade en el futuro)
 *.tsbuildinfo

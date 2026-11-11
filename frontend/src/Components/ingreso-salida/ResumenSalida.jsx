@@ -1,11 +1,8 @@
 //frontend/src/Components/ingreso-salida/ResumenSalida.jsx
 // Resumen previo a confirmar la salida (HU04 #3).
-
-/**
- * @param {Object} props
- * @param {Object} props.item - Elemento devuelto por GET /movimientos/dentro.
- */
 export default function ResumenSalida({ item }) {
+  const salida = item.salida || {};
+
   return (
     <div className="Resultado-panel">
       <div className="Resultado-fila">
@@ -22,18 +19,22 @@ export default function ResumenSalida({ item }) {
       <div className="Resultado-fila">
         <span className="Resultado-label">Hora de entrada</span>
         <span className="Resultado-valor">
-          {item.entrada.fecha} {item.entrada.hora}
+          {item.entrada?.fecha} {item.entrada?.hora}
         </span>
       </div>
-      <div className="Resultado-fila">
-        <span className="Resultado-label">Hora de salida</span>
-        <span className="Resultado-valor">
-          {item.salida.fecha} {item.salida.hora}
-        </span>
-      </div>
+      {salida.fecha && (
+        <div className="Resultado-fila">
+          <span className="Resultado-label">Hora de salida</span>
+          <span className="Resultado-valor">
+            {salida.fecha} {salida.hora}
+          </span>
+        </div>
+      )}
       <div className="Resultado-fila">
         <span className="Resultado-label">Permanencia</span>
-        <span className="Resultado-valor-verde">{item.permanencia}</span>
+        <span className="Resultado-valor-verde">
+          {item.permanencia ?? "—"}
+        </span>
       </div>
     </div>
   );

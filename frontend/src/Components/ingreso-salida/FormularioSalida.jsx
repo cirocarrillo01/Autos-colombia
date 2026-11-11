@@ -1,15 +1,14 @@
 //frontend/src/Components/ingreso-salida/FormularioSalida.jsx
-// Formulario de salida: placa o documento, selección, resumen previo y registro.
-
-import { useState, useRef, useEffect, useCallback } from "react";
+// Salida: placa o documento, selección, resumen previo y registro.
+import { useState, useCallback } from "react";
 import { buscarVehiculosDentro, registrarMovimiento } from "../../services/api";
 import { validarPlaca } from "../../validators/placa";
+import { esDocumento } from "../../validators/documento";
+import { useAutoLimpiar } from "../../hooks/useAutoLimpiar";
 import AlertaPlaca from "./AlertaPlaca.jsx";
 import ResumenSalida from "./ResumenSalida.jsx";
 import PanelMovimiento from "./PanelMovimiento.jsx";
 import SelectorVehiculoDialog from "./SelectorVehiculoDialog.jsx";
-
-const esDocumento = (t) => /^\d{5,20}$/.test(t.trim());
 
 export default function FormularioSalida() {
   const [entrada, setEntrada] = useState("");
@@ -19,9 +18,9 @@ export default function FormularioSalida() {
   const [movimiento, setMovimiento] = useState(null);
   const [error, setError] = useState("");
   const [alerta, setAlerta] = useState(null);
-  const timerRef = useRef(null);
+  const [cargando, setCargando] = useState(false);
 
-  function handleLimpiar() {
+  const handleLimpiar = useCallback(() => {
     setEntrada("");
     setCandidatos(null);
     setSeleccionado(null);
@@ -29,49 +28,39 @@ export default function FormularioSalida() {
     setError("");
     setAlerta(null);
     setVista("idle");
-  }
+    setCargando(false);
+  }, []);
 
-  const resetTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (vista !== "idle" || alerta !== null) {
-      timerRef.current = setTimeout(() => {
-        handleLimpiar();
-      }, 35000);
-    }
-  }, [vista, alerta]);
+  useAutoLimpiar(vista !== "idle" || alerta !== null, handleLimpiar);
 
-  useEffect(() => {
-    resetTimer();
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [vista, alerta, resetTimer]);
-
-  const handleBuscar = async () => {
+  const handleBuscar = useCallback(async () => {
     setError("");
     setAlerta(null);
+    setCargando(false);
+
     const texto = entrada.trim();
     if (!texto) {
-      setAlerta({
+      return setAlerta({
         tipo: "campo-vacio",
         mensaje: "Ingresa una placa o un documento.",
       });
-      return;
     }
 
     let consulta = texto;
     if (!esDocumento(texto)) {
       const v = validarPlaca(texto);
       if (!v.valida) {
-        setAlerta({ tipo: "formato-invalido", mensaje: v.error });
-        return;
+        return setAlerta({ tipo: "formato-invalido", mensaje: v.error });
       }
       consulta = v.placa;
       setEntrada(v.placa);
     }
 
+    setCargando(true);
     try {
       const lista = await buscarVehiculosDentro(consulta);
+      setCargando(false);
+
       if (lista.length === 1) {
         setSeleccionado(lista[0]);
         setVista("resultado");
@@ -79,23 +68,32 @@ export default function FormularioSalida() {
         setCandidatos(lista);
       }
     } catch (err) {
+      setCargando(false);
+
       if (err.status === 404) {
-        setAlerta({ tipo: "ya-procesada", mensaje: err.message });
+        setAlerta({
+          tipo: "ya-procesada",
+          mensaje: `No se encontró el vehículo ${texto} dentro del parqueadero.`,
+        });
       } else {
         setError(err.message);
       }
     }
-  };
+  }, [entrada]);
 
-  const handleSeleccionar = (item) => {
+  const handleSeleccionar = useCallback((item) => {
     setCandidatos(null);
     setSeleccionado(item);
     setEntrada(item.placa);
     setVista("resultado");
-  };
+  }, []);
 
-  const handleSalir = async () => {
+  const handleSalir = useCallback(async () => {
+    if (!seleccionado || cargando) return;
+
     setError("");
+    setCargando(true);
+
     try {
       const mov = await registrarMovimiento({
         placa: seleccionado.placa,
@@ -104,6 +102,8 @@ export default function FormularioSalida() {
       setMovimiento(mov);
       setVista("confirmado");
     } catch (err) {
+      setCargando(false);
+
       if (err.status === 400) {
         setSeleccionado(null);
         setVista("idle");
@@ -112,19 +112,18 @@ export default function FormularioSalida() {
         setError(err.message);
       }
     }
-  };
+  }, [seleccionado, cargando]);
 
   const opcionesDialogo = (candidatos ?? []).map((c) => ({
     key: c.id_acceso,
     titulo: `${c.placa} · ${c.tipo}`,
-    detalle: `Celda ${c.celda} · Entró ${c.entrada.fecha} ${c.entrada.hora} · ${c.permanencia}`,
+    detalle: `Celda ${c.celda ?? "—"} · Entró ${c.entrada?.fecha ?? "—"} ${c.entrada?.hora ?? "—"} · ${c.permanencia ?? "—"}`,
     original: c,
   }));
 
   return (
     <div className="Consulta-card">
       <h2 className="Consulta-titulo">Salir</h2>
-
       <div className="Consulta-input-row">
         <input
           type="text"
@@ -151,8 +150,12 @@ export default function FormularioSalida() {
         <>
           <ResumenSalida item={seleccionado} />
           <div className="Consulta-acciones">
-            <button className="Consulta-btn-salir" onClick={handleSalir}>
-              Confirmar salida
+            <button
+              className="Consulta-btn-salir"
+              onClick={handleSalir}
+              disabled={cargando}
+            >
+              {cargando ? "Procesando..." : "Confirmar salida"}
             </button>
             <button className="Consulta-btn-limpiar" onClick={handleLimpiar}>
               Limpiar
@@ -183,4 +186,3 @@ export default function FormularioSalida() {
     </div>
   );
 }
-

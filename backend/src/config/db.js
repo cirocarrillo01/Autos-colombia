@@ -1,11 +1,7 @@
-//backend/src/config/db.js
-// Pool de conexiones MySQL (mysql2/promise) y helper query() con parámetros (?).
-
+// Pool MySQL (mysql2/promise), helper query() y conTransaccion().
 import { createPool } from "mysql2/promise";
 import { env } from "./envLoader.js";
 
-// Se usan campos sueltos y no una URL: mysql2 no decodifica bien las
-// contraseñas con caracteres especiales cuando van dentro de una URL.
 export const pool = createPool({
   host: env.DB_HOST,
   port: env.DB_PORT,
@@ -19,20 +15,36 @@ export const pool = createPool({
   timezone: "Z",
 });
 
-/**
- * Ejecuta una consulta SQL parametrizada.
- * @param {string} sql - Consulta con placeholders (?).
- * @param {Array} params - Valores a interpolar.
- * @returns {Promise<Array>} Filas resultantes.
- * @throws {Error} Re-lanza el error con log de SQL y mensaje.
- */
+/** Consulta parametrizada; devuelve solo las filas. */
 export async function query(sql, params = []) {
   try {
     const [filas] = await pool.query(sql, params);
     return filas;
   } catch (err) {
-    console.error("Error en consulta SQL:", err.message);
-    console.error("SQL:", sql);
+    console.error("Error en consulta SQL:", err.message, "\nSQL:", sql);
     throw err;
+  }
+}
+
+/**
+ * Ejecuta `trabajo(conn)` dentro de UNA transacción real (misma conexión).
+ * Commit si termina bien, rollback si lanza.
+ */
+export async function conTransaccion(trabajo) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const r = await trabajo(conn);
+    await conn.commit();
+    return r;
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      /* conexión ya cerrada */
+    }
+    throw err;
+  } finally {
+    conn.release();
   }
 }

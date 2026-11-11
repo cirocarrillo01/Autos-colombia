@@ -1,124 +1,84 @@
-﻿//backend/src/repositories/userRepository.js
-// Acceso a datos de la tabla `usuarios`. Consultas SQL nativas con mysql2/promise.
-
+﻿// Acceso a `usuarios` (SQL nativo).
 import { query } from "../config/db.js";
+import { paginar, likeSeguro } from "../utils/consultas.js";
 
-/**
- * Busca un usuario por su usuario_login.
- * @param {string} usuario_login 
- * @returns {Promise<Object|null>}
- */
-export const findByLogin = async (usuario_login) => {
-  const filas = await query(
-    `SELECT id_usuario, rol, tipo_documento, documento, nombres, apellidos,
-            telefono, email, usuario_login, clave_hash, estado, ultimo_acceso,
-            sesion_activa, fecha_sesion_activa, fecha_registro
-     FROM usuarios
-     WHERE usuario_login = ?
-     LIMIT 1`,
-    [usuario_login],
-  );
-  return filas[0] ?? null;
-};
+const COLUMNAS = `id_usuario, rol, tipo_documento, documento, nombres, apellidos, telefono, email,
+  usuario_login, estado, ultimo_acceso, sesion_activa, fecha_sesion_activa, fecha_registro`;
 
-/**
- * Busca un usuario por id.
- * @param {number} id_usuario 
- * @returns {Promise<Object|null>}
- */
-export const findById = async (id_usuario) => {
-  const filas = await query(
-    `SELECT id_usuario, rol, tipo_documento, documento, nombres, apellidos,
-            telefono, email, usuario_login, estado, ultimo_acceso,
-            sesion_activa, fecha_sesion_activa, fecha_registro
-     FROM usuarios
-     WHERE id_usuario = ?
-     LIMIT 1`,
-    [id_usuario],
-  );
-  return filas[0] ?? null;
-};
+export const findByLogin = async (login) =>
+  (
+    await query(
+      `SELECT ${COLUMNAS}, clave_hash FROM usuarios WHERE usuario_login = ? LIMIT 1`,
+      [login],
+    )
+  )[0] ?? null;
 
-/**
- * Verifica si ya existe un usuario duplicado.
- * @param {Object} datos - { tipo_documento, documento, usuario_login, email }
- * @param {number|null} excludeId - ID a excluir de la búsqueda
- * @returns {Promise<Object|null>}
- */
+export const findById = async (id) =>
+  (
+    await query(
+      `SELECT ${COLUMNAS} FROM usuarios WHERE id_usuario = ? LIMIT 1`,
+      [id],
+    )
+  )[0] ?? null;
+
 export const findDuplicate = async (
   { tipo_documento, documento, usuario_login, email },
   excludeId = null,
 ) => {
   const params = [tipo_documento, documento, usuario_login];
-
-  let sql = `
-    SELECT id_usuario, documento, usuario_login, email, tipo_documento
-    FROM usuarios
-    WHERE ((tipo_documento = ? AND documento = ?) OR usuario_login = ?`;
+  let sql = `SELECT id_usuario, documento, usuario_login, email, tipo_documento FROM usuarios
+             WHERE ((tipo_documento = ? AND documento = ?) OR usuario_login = ?`;
   if (email) {
     sql += ` OR email = ?`;
     params.push(email);
   }
   sql += `)`;
-  if (excludeId !== null && excludeId !== undefined) {
+  if (excludeId != null) {
     sql += ` AND id_usuario <> ?`;
     params.push(excludeId);
   }
-  sql += ` LIMIT 1`;
-  const filas = await query(sql, params);
-  return filas[0] ?? null;
+  return (await query(sql + ` LIMIT 1`, params))[0] ?? null;
 };
 
-/**
- * Crea un nuevo usuario.
- * @param {Object} datos 
- * @returns {Promise<{insertId: number}>}
- */
-export const create = async (datos) => {
-  const r = await query(
-    `INSERT INTO usuarios
-       (rol, tipo_documento, documento, nombres, apellidos, telefono, email,
-        usuario_login, clave_hash, estado)
+export const create = async (d) => ({
+  insertId: (
+    await query(
+      `INSERT INTO usuarios (rol, tipo_documento, documento, nombres, apellidos, telefono, email, usuario_login, clave_hash, estado)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo')`,
-    [
-      datos.rol,
-      datos.tipo_documento,
-      datos.documento,
-      datos.nombres,
-      datos.apellidos,
-      datos.telefono || null,
-      datos.email || null,
-      datos.usuario_login,
-      datos.clave_hash,
-    ],
-  );
-  return { insertId: r.insertId };
-};
+      [
+        d.rol,
+        d.tipo_documento,
+        d.documento,
+        d.nombres,
+        d.apellidos,
+        d.telefono || null,
+        d.email || null,
+        d.usuario_login,
+        d.clave_hash,
+      ],
+    )
+  ).insertId,
+});
 
-/**
- * Lista usuarios con búsqueda y filtros, paginados.
- * @param {Object} opts - { search, rol, estado, page, limit }
- * @returns {Promise<{rows: Array, total: number, page: number, limit: number}>}
- */
 export const listar = async ({
   search = "",
   rol = "",
   estado = "",
-  page = 1,
-  limit = 10,
+  page,
+  limit,
 } = {}) => {
-  const p = Number.parseInt(page, 10) || 1;
-  const l = Math.min(Number.parseInt(limit, 10) || 10, 100);
-  const offset = (p - 1) * l;
-
-  const conds = [];
-  const params = [];
-
+  const {
+    page: p,
+    limit: l,
+    offset,
+  } = paginar({ page, limit }, { porDefecto: 10 });
+  const conds = [],
+    params = [];
   if (search) {
     conds.push(
       `(nombres LIKE ? OR apellidos LIKE ? OR documento LIKE ? OR usuario_login LIKE ?)`,
     );
-    const s = `%${search}%`;
+    const s = likeSeguro(search);
     params.push(s, s, s, s);
   }
   if (rol) {
@@ -129,144 +89,101 @@ export const listar = async ({
     conds.push(`estado = ?`);
     params.push(estado);
   }
-
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
   const rows = await query(
-    `SELECT id_usuario, rol, tipo_documento, documento, nombres, apellidos,
-            telefono, email, usuario_login, estado, ultimo_acceso,
-            sesion_activa, fecha_sesion_activa, fecha_registro
-     FROM usuarios
-     ${where}
-     ORDER BY fecha_registro DESC
-     LIMIT ? OFFSET ?`,
+    `SELECT ${COLUMNAS} FROM usuarios ${where} ORDER BY fecha_registro DESC LIMIT ? OFFSET ?`,
     [...params, l, offset],
   );
-
-  const countRows = await query(
+  const [{ total }] = await query(
     `SELECT COUNT(*) AS total FROM usuarios ${where}`,
     params,
   );
-
-  return { rows, total: Number(countRows[0]?.total ?? 0), page: p, limit: l };
+  return { rows, total: Number(total), page: p, limit: l };
 };
 
-/**
- * Actualiza los datos de un usuario.
- * @param {number} id_usuario 
- * @param {Object} campos 
- * @returns {Promise<boolean>}
- */
-export const actualizar = async (id_usuario, campos) => {
-  const permitidos = [
-    "rol", "tipo_documento", "documento", "nombres",
-    "apellidos", "telefono", "email", "usuario_login", "estado",
-  ];
-  const sets = [];
-  const params = [];
-  for (const campo of permitidos) {
-    if (campo in campos) {
-      let valor = campos[campo];
-      if ((campo === "telefono" || campo === "email") && valor === "")
-        valor = null;
-      sets.push(`${campo} = ?`);
-      params.push(valor);
-    }
+const EDITABLES = [
+  "rol",
+  "tipo_documento",
+  "documento",
+  "nombres",
+  "apellidos",
+  "telefono",
+  "email",
+  "usuario_login",
+  "estado",
+];
+export const actualizar = async (id, campos) => {
+  const sets = [],
+    params = [];
+  for (const c of EDITABLES) {
+    if (!(c in campos)) continue;
+    const v = campos[c];
+    sets.push(`${c} = ?`);
+    params.push((c === "telefono" || c === "email") && v === "" ? null : v);
   }
-  if (sets.length === 0) return false;
-  params.push(id_usuario);
-  const r = await query(
-    `UPDATE usuarios SET ${sets.join(", ")} WHERE id_usuario = ?`,
-    params,
+  if (!sets.length) return false;
+  return (
+    (
+      await query(
+        `UPDATE usuarios SET ${sets.join(", ")} WHERE id_usuario = ?`,
+        [...params, id],
+      )
+    ).affectedRows > 0
   );
-  return r.affectedRows > 0;
 };
 
-/**
- * Activa o desactiva un usuario.
- * @param {number} id_usuario 
- * @param {string} estado 
- * @returns {Promise<boolean>}
- */
-export const cambiarEstado = async (id_usuario, estado) => {
-  const sql =
-    estado === "inactivo"
-      ? `UPDATE usuarios SET estado = ?, sesion_activa = FALSE, fecha_sesion_activa = NULL WHERE id_usuario = ?`
-      : `UPDATE usuarios SET estado = ? WHERE id_usuario = ?`;
-  const r = await query(sql, [estado, id_usuario]);
-  return r.affectedRows > 0;
-};
-
-/**
- * Cambia la clave de un usuario.
- * @param {number} id_usuario 
- * @param {string} clave_hash 
- * @returns {Promise<boolean>}
- */
-export const cambiarClave = async (id_usuario, clave_hash) => {
-  const r = await query(
-    `UPDATE usuarios SET clave_hash = ? WHERE id_usuario = ?`,
-    [clave_hash, id_usuario],
+export const cerrarSesionActiva = (id) =>
+  query(
+    `UPDATE usuarios SET sesion_activa = FALSE, fecha_sesion_activa = NULL WHERE id_usuario = ?`,
+    [id],
   );
+
+export const cambiarEstado = async (id, estado) => {
+  const r = await query(`UPDATE usuarios SET estado = ? WHERE id_usuario = ?`, [
+    estado,
+    id,
+  ]);
+  if (estado === "inactivo") await cerrarSesionActiva(id);
   return r.affectedRows > 0;
 };
 
-/**
- * Registra el último acceso exitoso.
- * @param {number} id_usuario 
- * @returns {Promise<boolean>}
- */
-export const registrarUltimoAcceso = async (id_usuario) => {
-  const r = await query(
+export const cambiarClave = async (id, hash) =>
+  (
+    await query(`UPDATE usuarios SET clave_hash = ? WHERE id_usuario = ?`, [
+      hash,
+      id,
+    ])
+  ).affectedRows > 0;
+
+export const registrarUltimoAcceso = (id) =>
+  query(
     `UPDATE usuarios SET ultimo_acceso = UTC_TIMESTAMP() WHERE id_usuario = ?`,
-    [id_usuario],
+    [id],
   );
-  return r.affectedRows > 0;
-};
 
-/**
- * Establece sesión activa.
- * @param {number} id_usuario 
- * @returns {Promise<boolean>}
- */
-export const registrarSesionActiva = async (id_usuario) => {
-  const r = await query(
+export const registrarSesionActiva = (id) =>
+  query(
     `UPDATE usuarios SET sesion_activa = TRUE, fecha_sesion_activa = UTC_TIMESTAMP() WHERE id_usuario = ?`,
-    [id_usuario],
+    [id],
   );
-  return r.affectedRows > 0;
-};
 
-/**
- * Registra un intento de inicio de sesión.
- * @param {Object} datos - { usuario_login, exitoso, ip_address }
- * @returns {Promise<{insertId: number}>}
- */
-export const registrarIntento = async ({
-  usuario_login,
-  exitoso,
-  ip_address,
-}) => {
-  const r = await query(
-    `INSERT INTO login_attempts (usuario_login, exitoso, ip_address)
-     VALUES (?, ?, ?)`,
+export const registrarIntento = ({ usuario_login, exitoso, ip_address }) =>
+  query(
+    `INSERT INTO login_attempts (usuario_login, exitoso, ip_address) VALUES (?, ?, ?)`,
     [usuario_login, exitoso ? 1 : 0, ip_address],
   );
-  return { insertId: r.insertId };
-};
 
-/**
- * Cuenta intentos fallidos recientes.
- * @param {Object} opts - { usuario_login, ip_address, minutos }
- * @returns {Promise<number>}
- */
 export const contarFallidosRecientes = async ({
   usuario_login = null,
   ip_address = null,
   minutos = 15,
 } = {}) => {
-  const conds = [];
-  const params = [];
+  const conds = [
+    `exitoso = 0`,
+    `fecha_intento >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)`,
+  ];
+  const params = [minutos];
   if (usuario_login) {
     conds.push(`usuario_login = ?`);
     params.push(usuario_login);
@@ -275,16 +192,11 @@ export const contarFallidosRecientes = async ({
     conds.push(`ip_address = ?`);
     params.push(ip_address);
   }
-  conds.push(`exitoso = 0`);
-  conds.push(`fecha_intento >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)`);
-  params.push(minutos);
-
-  const where = conds.join(" AND ");
-  const rows = await query(
-    `SELECT COUNT(*) AS total FROM login_attempts WHERE ${where}`,
+  const [{ total }] = await query(
+    `SELECT COUNT(*) AS total FROM login_attempts WHERE ${conds.join(" AND ")}`,
     params,
   );
-  return Number(rows[0]?.total ?? 0);
+  return Number(total);
 };
 
 export default {
@@ -296,6 +208,7 @@ export default {
   actualizar,
   cambiarEstado,
   cambiarClave,
+  cerrarSesionActiva,
   registrarUltimoAcceso,
   registrarSesionActiva,
   registrarIntento,

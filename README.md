@@ -898,6 +898,11 @@ Las migraciones incrementales se encuentran en `backend/migrations/`:
 - `004_create_audit_log.sql` — tabla de auditoría.
 - `005_create_revoked_tokens.sql` — tokens revocados.
 - `006_create_refresh_tokens.sql` — refresh tokens.
+- `007_audit_log_accion.sql` — `audit_log.accion` pasa a `VARCHAR(50) NOT NULL` para codificar rechazos (`entrada_rechazada`, `salida_rechazada`, etc.).
+
+Además existe `backend/Script/migracion_sesion_activa.sql` (archivo suelto, no versionado como migración incremental) que replica el `ALTER TABLE` de `002_add_sesion_activa.sql` para bases creadas con `parqueadero.sql` antes de que esas columnas existieran.
+
+Los parches aplicados a `backend/Script/parqueadero.sql` se documentan en `backend/SQL_parches.md`.
 
 ---
 

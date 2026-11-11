@@ -63,6 +63,7 @@ export default function UserListPage() {
 
   /**
    * Carga la lista de usuarios con filtros y paginación.
+   * Tiene try/catch interno: nunca rechaza.
    */
   const cargar = useCallback(async () => {
     try {
@@ -82,15 +83,13 @@ export default function UserListPage() {
 
   /**
    * Ejecuta una acción asíncrona y maneja mensaje de éxito/error.
-   * @param {Function} fn - Función async a ejecutar.
-   * @param {string} okTexto - Texto en caso de éxito.
-   * @param {"ok"|"error"} tipoOk - Tipo de mensaje visual.
+   * Tiene try/catch interno: nunca rechaza.
    */
   const accion = async (fn, okTexto, tipoOk = "ok") => {
     try {
       await fn();
       setMsg({ tipo: tipoOk, texto: okTexto });
-      cargar();
+      await cargar();
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
     }
@@ -98,11 +97,10 @@ export default function UserListPage() {
 
   /**
    * Alterna el estado activo/inactivo de un usuario.
-   * @param {Object} u - Usuario.
    */
-  const alternarEstado = (u) => {
+  const alternarEstado = async (u) => {
     const desactivando = u.estado === "activo";
-    return accion(
+    await accion(
       () =>
         cambiarEstadoUsuario(
           u.id_usuario,
@@ -210,7 +208,7 @@ export default function UserListPage() {
       );
       setMsg({ tipo: "ok", texto: "Clave restablecida" });
       cerrarClave();
-      cargar();
+      await cargar();
     } catch (e) {
       setModal((m) => ({ ...m, error: e.message }));
     } finally {
@@ -330,7 +328,15 @@ export default function UserListPage() {
                         }`}
                         style={{ minWidth: "110px" }}
                         disabled={esYo}
-                        onClick={() => alternarEstado(u)}
+                        // ✅ S9383: la sentencia termina con .catch() explícito.
+                        onClick={() =>
+                          alternarEstado(u).catch((error) => {
+                            console.error(
+                              "Error inesperado al alternar estado:",
+                              error,
+                            );
+                          })
+                        }
                       >
                         {u.estado === "activo" ? "Desactivar" : "Activar"}
                       </button>
@@ -423,7 +429,12 @@ export default function UserListPage() {
               <button
                 type="button"
                 className="Btn Btn--primary"
-                onClick={confirmarAdmin}
+                // ✅ S9383: .catch() explícito
+                onClick={() =>
+                  confirmarAdmin().catch((error) => {
+                    console.error("Error al verificar admin:", error);
+                  })
+                }
                 disabled={modal.enviando || !modal.adminClave}
               >
                 {modal.enviando ? "Verificando…" : "Continuar"}
@@ -432,7 +443,12 @@ export default function UserListPage() {
               <button
                 type="button"
                 className="Btn Btn--primary"
-                onClick={guardarClave}
+                // ✅ S9383: .catch() explícito
+                onClick={() =>
+                  guardarClave().catch((error) => {
+                    console.error("Error al guardar clave:", error);
+                  })
+                }
                 disabled={modal.enviando || !modal.nueva || !modal.confirmar}
               >
                 {modal.enviando ? "Guardando…" : "Guardar"}
@@ -481,7 +497,12 @@ export default function UserListPage() {
             <button
               type="button"
               className="Btn Btn--primary"
-              onClick={confirmarEditar}
+              // ✅ S9383: .catch() explícito
+              onClick={() =>
+                confirmarEditar().catch((error) => {
+                  console.error("Error al confirmar edición:", error);
+                })
+              }
               disabled={editConfirm.enviando || !editConfirm.adminClave}
             >
               {editConfirm.enviando ? "Verificando…" : "Continuar"}
@@ -528,7 +549,12 @@ export default function UserListPage() {
             <button
               type="button"
               className="Btn Btn--primary"
-              onClick={confirmarNuevo}
+              // ✅ S9383: .catch() explícito
+              onClick={() =>
+                confirmarNuevo().catch((error) => {
+                  console.error("Error al confirmar creación:", error);
+                })
+              }
               disabled={nuevoConfirm.enviando || !nuevoConfirm.adminClave}
             >
               {nuevoConfirm.enviando ? "Verificando…" : "Continuar"}

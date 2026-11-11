@@ -23,12 +23,6 @@ const ICONOS = {
   calendar: CalendarMonthIcon,
 };
 
-/**
- * Componente Sidebar - Menú lateral responsivo filtrado por rol.
- * @param {Object} props
- * @param {string} props.rol - "administrador" | "operador"
- * @returns {JSX.Element} Elemento aside con navegación y botón de logout.
- */
 function Sidebar({ rol }) {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -38,14 +32,15 @@ function Sidebar({ rol }) {
     return itemRoles.includes(rol);
   });
 
-  const handleLogout = () => {
-    logout()
-      .catch((error) => {
-        console.error("Error al cerrar sesión:", error);
-      })
-      .finally(() => {
-        navigate("/login", { replace: true });
-      });
+  // ✅ S9383: async/await con try/finally (no crea Promises intermedias).
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    } finally {
+      navigate("/login", { replace: true });
+    }
   };
 
   return (
@@ -82,7 +77,12 @@ function Sidebar({ rol }) {
       <div className="Sidebar-footer">
         <button
           className="logout-btn"
-          onClick={handleLogout}
+          // ✅ S9383: la sentencia termina con .catch() explícito.
+          onClick={() =>
+            handleLogout().catch((error) => {
+              console.error("Error inesperado al cerrar sesión:", error);
+            })
+          }
           title="Cerrar Sesión"
         >
           <LogoutIcon /> <span>Cerrar Sesión</span>

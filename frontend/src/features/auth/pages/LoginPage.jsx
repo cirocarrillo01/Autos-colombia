@@ -6,10 +6,6 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./LoginPage.css";
 
-/**
- * Componente LoginPage - Formulario de autenticación.
- * Redirige a /dashboard si ya hay sesión válida.
- */
 export default function LoginPage() {
   const { isLoggedIn, loading, login, manejarError } = useAuth();
   const navigate = useNavigate();
@@ -21,35 +17,38 @@ export default function LoginPage() {
 
   const cambiar = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  /**
-   * Envía credenciales al backend y maneja la navegación.
-   * @param {React.FormEvent} e 
-   */
-  const enviar = (e) => {
+  // ✅ S9383: async/await con try/catch/finally (no crea Promises intermedias).
+  const enviar = async (e) => {
     e.preventDefault();
     setEnviando(true);
     setError("");
 
-    login(form.usuario_login.trim(), form.clave)
-      .then((usuario) => {
-        if (usuario) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-        setError("Error en el login. Intente nuevamente.");
-      })
-      .catch((err) => {
-        manejarError(err);
-        setError(err.message || "Error en el login");
-      })
-      .finally(() => {
-        setEnviando(false);
-      });
+    try {
+      const usuario = await login(form.usuario_login.trim(), form.clave);
+      if (usuario) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+      setError("Error en el login. Intente nuevamente.");
+    } catch (err) {
+      manejarError(err);
+      setError(err.message || "Error en el login");
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
     <div className="Login">
-      <form className="Login-card" onSubmit={enviar}>
+      <form
+        className="Login-card"
+        // ✅ S9383: la sentencia termina con .catch() explícito.
+        onSubmit={(e) =>
+          enviar(e).catch((error) => {
+            console.error("Error inesperado en login:", error);
+          })
+        }
+      >
         <h1 className="Login-titulo">Auto Colombia</h1>
         <p className="Login-sub">Ingrese al sistema</p>
 

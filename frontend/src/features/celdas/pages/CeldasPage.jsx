@@ -110,6 +110,7 @@ export default function CeldasPage() {
 
   /**
    * Carga lista, bloques y resumen en paralelo.
+   * Tiene try/catch interno: nunca rechaza.
    */
   const cargar = useCallback(async () => {
     try {
@@ -143,6 +144,7 @@ export default function CeldasPage() {
 
   /**
    * Ejecuta una acción asíncrona con mensaje de resultado.
+   * Tiene try/catch interno: nunca rechaza.
    * @param {Function} fn
    * @param {string} okTexto
    * @param {"ok"|"error"} tipoOk
@@ -151,7 +153,7 @@ export default function CeldasPage() {
     try {
       const r = await fn();
       setMsg({ tipo: tipoOk, texto: r?.mensaje ?? okTexto });
-      cargar();
+      await cargar(); // ✅ S9383: await (evita promesa flotante)
       return true;
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
@@ -200,7 +202,7 @@ export default function CeldasPage() {
       });
       setMsg({ tipo: "ok", texto: "Celda creada" });
       cerrarCrear();
-      cargar();
+      await cargar(); // ✅ S9383: await (evita promesa flotante)
     } catch (err) {
       setCrearModal((m) => ({ ...m, error: err.message }));
     } finally {
@@ -223,7 +225,7 @@ export default function CeldasPage() {
       await eliminarCelda(eliminarModal.celda.id_celda);
       setMsg({ tipo: "error", texto: "Celda eliminada correctamente" });
       cerrarEliminar();
-      cargar();
+      await cargar(); // ✅ S9383: await (evita promesa flotante)
     } catch (err) {
       setMsg({ tipo: "error", texto: err.message });
       setEliminarModal((m) => ({ ...m, enviando: false }));
@@ -274,7 +276,7 @@ export default function CeldasPage() {
         texto: `Intercambio realizado: ${celda.codigo} ahora es ${celdaDestino.tipo} y ${celdaDestino.codigo} ahora es ${celda.tipo}`,
       });
       cerrarCambiarTipo();
-      cargar();
+      await cargar(); // ✅ S9383: await (evita promesa flotante)
     } catch (e) {
       setCambiarTipoModal((m) => ({ ...m, enviando: false, error: e.message }));
     } finally {
@@ -316,7 +318,7 @@ export default function CeldasPage() {
       });
       setMsg({ tipo: "ok", texto: "Celda en mantenimiento" });
       cerrarMantenimiento();
-      cargar();
+      await cargar(); // ✅ S9383: await (evita promesa flotante)
     } catch (e) {
       setMantenimientoModal((m) => ({ ...m, error: e.message }));
     } finally {
@@ -326,7 +328,8 @@ export default function CeldasPage() {
 
   const toggleMantenimiento = (c) => {
     if (c.en_mantenimiento) {
-      ejecutar(
+      // ✅ S9383: void documenta que ejecutar() atrapa sus propios errores
+      void ejecutar(
         () => cambiarEstadoCelda(c.id_celda, { en_mantenimiento: false }),
         "Mantenimiento finalizado",
       );
@@ -578,7 +581,8 @@ export default function CeldasPage() {
                         style={{ minWidth: 110 }}
                         onClick={() => {
                           const inactivando = c.activa;
-                          return ejecutar(
+                          // ✅ S9383: void (ejecutar atrapa sus propios errores)
+                          void ejecutar(
                             () =>
                               cambiarEstadoCelda(c.id_celda, {
                                 activa: !c.activa,
@@ -612,7 +616,8 @@ export default function CeldasPage() {
                           className="Btn Btn--sm"
                           style={{ minWidth: 115 }}
                           title="Reubicar vehículo"
-                          onClick={() => abrirSelectorReubicacion(c)}
+                          // ✅ S9383: void (abrirSelectorReubicacion atrapa sus errores)
+                          onClick={() => void abrirSelectorReubicacion(c)}
                         >
                           Reubicar
                         </button>

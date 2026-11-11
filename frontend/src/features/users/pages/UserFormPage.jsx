@@ -29,7 +29,8 @@ const VACIO = {
  */
 export default function UserFormPage() {
   const { id } = useParams();
-  const editando = Boolean(id) && id !== "new" && !isNaN(Number(id));
+  // ✅ S7773: Number.isNaN en lugar de isNaN global
+  const editando = Boolean(id) && id !== "new" && !Number.isNaN(Number(id));
   const navigate = useNavigate();
   const [form, setForm] = useState(VACIO);
   const [error, setError] = useState("");
@@ -38,6 +39,7 @@ export default function UserFormPage() {
 
   useEffect(() => {
     if (!editando) return;
+    // Cadena termina en .catch(): cumple S9383
     obtenerUsuario(id)
       .then((u) =>
         setForm({
@@ -106,7 +108,15 @@ export default function UserFormPage() {
       <h2>{editando ? "Editar usuario" : "Nuevo usuario"}</h2>
       {error && <p className="Msg Msg-error">{error}</p>}
 
-      <form className="Card" onSubmit={enviar}>
+      {/* ✅ S9383: la sentencia termina con .catch() explícito. */}
+      <form
+        className="Card"
+        onSubmit={(e) =>
+          enviar(e).catch((error) => {
+            console.error("Error inesperado al guardar usuario:", error);
+          })
+        }
+      >
         <div className="Form-grid">
           <div className="Field">
             <label htmlFor="rol">Rol</label>

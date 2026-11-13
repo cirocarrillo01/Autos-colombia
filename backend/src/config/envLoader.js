@@ -16,6 +16,10 @@ try {
   )) {
     if (!(k in process.env)) process.env[k] = v;
   }
+  // Si estamos en entorno de prueba, usar la BD de prueba
+  if (process.env.NODE_ENV === "test") {
+    process.env.DB_NAME = process.env.DB_NAME_TEST || "autos_colombia_test";
+  }
 } catch {
   console.warn(
     "No se encontrÃ³ backend/.env: se usan las variables del sistema.",

@@ -30,5 +30,5 @@ test("validarDatosUsuario: rechaza rol inválido", () => {
     clave: "1234"
   };
   const result = validarDatosUsuario(body);
-  assert.match(result, /Rol inválido/);
+  assert.match(result, /Rol no reconocido/);
 });

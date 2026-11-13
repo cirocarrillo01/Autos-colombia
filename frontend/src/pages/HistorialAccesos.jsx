@@ -47,7 +47,7 @@ export default function HistorialAccesos() {
     }
   }, [aplicados, page]);
 
-  usePolling(cargar, 30000);
+  usePolling(cargar, 60000);
 
   // Debounce de filtros -> aplicados (el polling reacciona al cambio de `cargar`)
   useEffect(() => {

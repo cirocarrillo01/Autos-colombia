@@ -84,7 +84,7 @@ for (const rol of VALID_ROLES) {
 test("validarDatosUsuario: rol 'superadmin' es inválido", () => {
   const err = validarDatosUsuario({ ...baseValido, rol: "superadmin" });
   assert.ok(err);
-  assert.match(err, /rol inválido/i);
+  assert.match(err, /Rol no reconocido/i);
 });
 
 test("validarDatosUsuario: rol vacío es atrapado como campo obligatorio", () => {

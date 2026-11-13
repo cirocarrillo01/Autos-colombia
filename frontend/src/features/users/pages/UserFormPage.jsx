@@ -93,6 +93,7 @@ export default function UserFormPage() {
     <div className="Field">
       <label htmlFor={name}>{label}</label>
       <input
+        data-testid={`usuario-${name}`}
         id={name}
         name={name}
         className="Input"
@@ -121,6 +122,7 @@ export default function UserFormPage() {
           <div className="Field">
             <label htmlFor="rol">Rol</label>
             <select
+              data-testid="usuario-rol"
               id="rol"
               name="rol"
               className="Select"
@@ -134,6 +136,7 @@ export default function UserFormPage() {
           <div className="Field">
             <label htmlFor="tipo_documento">Tipo de documento</label>
             <select
+              data-testid="usuario-tipo_documento"
               id="tipo_documento"
               name="tipo_documento"
               className="Select"
@@ -177,6 +180,7 @@ export default function UserFormPage() {
                   Clave de administrador *
                 </label>
                 <input
+                  data-testid="usuario-claveAdmin"
                   id="claveAdminCrear"
                   name="claveAdmin"
                   className="Input"
@@ -195,6 +199,7 @@ export default function UserFormPage() {
           <div className="Field">
             <label htmlFor="claveAdmin">Clave de administrador *</label>
             <input
+              data-testid="usuario-claveAdmin"
               id="claveAdmin"
               name="claveAdmin"
               className="Input"

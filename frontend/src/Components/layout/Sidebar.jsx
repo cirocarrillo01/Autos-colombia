@@ -57,6 +57,7 @@ function Sidebar({ rol }) {
             return (
               <li key={item.link}>
                 <NavLink
+                  data-testid={`menu-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                   to={item.link}
                   title={item.title}
                   className={({ isActive }) =>
@@ -76,6 +77,7 @@ function Sidebar({ rol }) {
 
       <div className="Sidebar-footer">
         <button
+          data-testid="menu-cerrar-sesion"
           className="logout-btn"
           // ✅ S9383: la sentencia termina con .catch() explícito.
           onClick={() =>

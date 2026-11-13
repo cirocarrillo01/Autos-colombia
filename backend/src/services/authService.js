@@ -79,6 +79,11 @@ export const login = async (req, { usuario_login, clave } = {}) => {
 
   await intento(true);
   await userRepository.registrarUltimoAcceso(usuario.id_usuario);
+
+  // Seguridad: Revocar sesiones previas al iniciar sesión para garantizar sesión única
+  await refreshTokenRepository.revocarRefreshTokensUsuario(usuario.id_usuario);
+  await userRepository.cerrarSesionActiva(usuario.id_usuario);
+
   await userRepository.registrarSesionActiva(usuario.id_usuario);
   const token = generarToken(usuario.id_usuario);
   const refresh_token = await refreshTokenRepository.crearRefreshToken(

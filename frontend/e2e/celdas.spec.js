@@ -35,6 +35,18 @@ test.describe("E2E Celdas & Mantenimiento", () => {
           return new Response(JSON.stringify([{ bloque: "A", celdas: [{ id_celda: 1, codigo: "A1", tipo: "Carro", estado: "libre" }] }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         
+        if (urlStr.includes('/api/celdas?')) {
+          return new Response(JSON.stringify({
+            rows: [
+              { id_celda: 1, codigo: "A1", tipo: "Carro", estado: "libre", activa: true },
+              { id_celda: 2, codigo: "A2", tipo: "Carro", estado: "ocupada", activa: true, placa_ocupante: "XYZ999" }
+            ],
+            total: 2,
+            page: 1,
+            limit: 10
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        
         if (urlStr.includes('/api/celdas/tipos')) {
           console.log('[MOCK FETCH] Mocking celdas/tipos');
           return new Response(JSON.stringify([{ id_tipo_vehiculo: 1, nombre: "Carro" }]), { status: 200, headers: { 'Content-Type': 'application/json' } });

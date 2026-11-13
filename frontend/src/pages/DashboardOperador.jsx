@@ -28,7 +28,7 @@ export default function DashboardOperador() {
     }
   }, []);
 
-  usePolling(cargar, 30000);
+  usePolling(cargar, 60000);
 
   return (
     <div className="Page">

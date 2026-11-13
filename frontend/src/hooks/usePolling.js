@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
  * Hook de polling "inteligente" para actualización periódica de datos.
  *
  * Características:
- * - Ejecuta `callback` al montar y cada `intervalMs` ms (default 30000).
+ * - Ejecuta `callback` al montar y cada `intervalMs` ms (default 60000).
  * - Se PAUSA cuando la pestaña no está visible (document.visibilityState).
  * - Se REANUDA y refresca al volver a la pestaña.
  * - Dispara refresco inmediato cuando cambia la identidad de `callback`
@@ -18,7 +18,7 @@ import { useEffect, useRef } from "react";
  * @param {number} [intervalMs=30000] - Intervalo en milisegundos (default 30s).
  * @returns {void}
  */
-export function usePolling(callback, intervalMs = 30000) {
+export function usePolling(callback, intervalMs = 60000) {
   const cbRef = useRef(callback);
 
   // Mantener siempre la última versión del callback sin reiniciar el interval.

@@ -42,6 +42,9 @@ app.use(
   limitadorSensible,
 );
 
+import { noCache } from "./middleware/noCache.js";
+
+app.use("/api", noCache);
 app.use("/api", routes);
 app.use("/api", (_req, res) =>
   res.status(404).json({ error: "Ruta no encontrada" }),

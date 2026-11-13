@@ -75,5 +75,17 @@ frontend/playwright/.cache/
 # TypeScript (si se añade en el futuro)
 *.tsbuildinfo
 
+# Scripts de utilidad (temporales o locales)
+*.mjs
+*.inc
+*.ps1
+cambios_backend.mjs
+aplicar_vehiculo.mjs
+aplicar_movimiento.mjs
+verificar_documentos.mjs
+helper_vehiculo.inc
+generar-reporte.ps1
+generar-reporte-duo.ps1
+verificar_seed.mjs
 # Texto especifico de este proyecto
 reporte.txt

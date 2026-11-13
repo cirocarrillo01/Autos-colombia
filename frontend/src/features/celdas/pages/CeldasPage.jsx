@@ -127,7 +127,7 @@ export default function CeldasPage() {
     }
   }, [filtros, page]);
 
-  usePolling(cargar, 30000);
+  usePolling(cargar, 60000);
 
   useEffect(() => {
     listarTiposVehiculo()
@@ -496,7 +496,7 @@ export default function CeldasPage() {
               textAlign: "right",
             }}
           >
-            Se actualiza automáticamente cada 30 s.
+            Se actualiza automáticamente cada 1 min.
           </p>
         </DialogContent>
         <DialogActions>
@@ -674,6 +674,7 @@ export default function CeldasPage() {
                   Bloque (A-Z)
                 </label>
                 <input
+                  data-testid="celda-letra"
                   id="nueva-letra"
                   className="Input"
                   placeholder="Ej. A"
@@ -704,6 +705,7 @@ export default function CeldasPage() {
                   Número
                 </label>
                 <input
+                  data-testid="celda-numero"
                   id="nueva-numero"
                   className="Input"
                   type="number"
@@ -734,6 +736,7 @@ export default function CeldasPage() {
                   Tipo de vehículo
                 </label>
                 <select
+                  data-testid="celda-tipo"
                   id="nueva-tipo"
                   className="Select"
                   value={crearModal.id_tipo_vehiculo}

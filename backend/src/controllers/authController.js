@@ -1,17 +1,19 @@
 ﻿// Controladores de autenticación y registro de usuarios.
 import * as authService from "../services/authService.js";
 import { validarDatosUsuario } from "../middleware/validation.js";
+import { responder as responderHelper } from "../utils/responseHelper.js";
 
 const responder = (res, r) =>
-  res.status(r.status).json(r.error ? { error: r.error } : r.body);
+  responderHelper(res, r.status, r.error || r.mensaje, r.body || (r.usuario ? {usuario: r.usuario} : {}));
 
 export const register = async (req, res) => {
   // Antes: `req.body` sin `?? {}` -> TypeError (500) si el cliente no enviaba JSON.
   const { claveAdmin, ...datos } = req.body ?? {};
   if (!claveAdmin)
-    return res
-      .status(422)
-      .json({ error: "Debe confirmar con su clave de administrador" });
+    return responderHelper(res, 422, "Debe confirmar con su clave de administrador");
+
+  if (!req.user)
+    return responderHelper(res, 401, "No autenticado");
 
   const auth = await authService.verificarClaveUsuario({
     usuario_login: req.user.usuario_login,
@@ -20,10 +22,10 @@ export const register = async (req, res) => {
   // 403 y no 401: el front interpreta 401 como "sesión vencida" y cerraba la sesión del admin
   // cada vez que se equivocaba al escribir su clave.
   if (auth.status !== 200)
-    return res.status(403).json({ error: "Clave de administrador incorrecta" });
+    return responderHelper(res, 403, "Clave de administrador incorrecta");
 
   const invalido = validarDatosUsuario(datos);
-  if (invalido) return res.status(400).json({ error: invalido });
+  if (invalido) return responderHelper(res, 422, invalido);
   responder(res, await authService.registrar(datos, req.user));
 };
 
@@ -42,7 +44,7 @@ export const me = (req, res) => {
     telefono,
     estado,
   } = req.user;
-  res.json({
+  return responderHelper(res, 200, "Información de usuario obtenida", {
     id_usuario,
     usuario_login,
     rol,

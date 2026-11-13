@@ -28,15 +28,15 @@ export const validarDatosUsuario = (body, { requiereClave = true } = {}) => {
       return `El campo "${campo}" es obligatorio`;
   }
   if (!VALID_ROLES.includes(body.rol))
-    return `Rol inválido. Debe ser uno de: ${VALID_ROLES.join(", ")}`;
+    return "Rol no reconocido. Los valores permitidos son: 'administrador' u 'operador'.";
   if (!VALID_TIPOS_DOCUMENTO.includes(body.tipo_documento)) {
-    return `Tipo de documento inválido. Debe ser uno de: ${VALID_TIPOS_DOCUMENTO.join(", ")}`;
+    return "Tipo de documento no reconocido. Use: 'cc', 'ce', 'nit' o 'pasaporte'.";
   }
   const doc = String(body.documento).length;
   if (doc < 5 || doc > 20)
-    return "El documento debe tener entre 5 y 20 caracteres";
+    return "La longitud del documento debe estar entre 5 y 20 caracteres.";
   if (String(body.usuario_login).length < 3)
-    return "El usuario de acceso debe tener al menos 3 caracteres";
+    return "El usuario de acceso debe tener al menos 3 caracteres.";
   if (requiereClave) {
     const e = validarClave(body.clave);
     if (e) return e;

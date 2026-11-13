@@ -56,7 +56,7 @@ export default function OperatorCeldasPage() {
     }
   }, [filtros, page]);
 
-  usePolling(cargar, 30000);
+  usePolling(cargar, 60000);
 
   const filtrar = (campo) => (e) => {
     setPage(1);
@@ -237,7 +237,7 @@ export default function OperatorCeldasPage() {
               textAlign: "right",
             }}
           >
-            Se actualiza automáticamente cada 30 s.
+            Se actualiza automáticamente cada 1 min.
           </p>
         </DialogContent>
         <DialogActions>

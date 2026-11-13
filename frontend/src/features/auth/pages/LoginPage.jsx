@@ -54,6 +54,7 @@ export default function LoginPage() {
 
         <label htmlFor="usuario_login">Usuario</label>
         <input
+          data-testid="login-usuario"
           id="usuario_login"
           name="usuario_login"
           value={form.usuario_login}
@@ -65,6 +66,7 @@ export default function LoginPage() {
 
         <label htmlFor="clave">Clave</label>
         <input
+          data-testid="login-clave"
           id="clave"
           name="clave"
           type="password"
@@ -77,7 +79,7 @@ export default function LoginPage() {
 
         {error && <p className="Login-error">{error}</p>}
 
-        <button type="submit" disabled={enviando}>
+        <button data-testid="login-submit" type="submit" disabled={enviando}>
           {enviando ? "Ingresando…" : "Ingresar"}
         </button>
       </form>

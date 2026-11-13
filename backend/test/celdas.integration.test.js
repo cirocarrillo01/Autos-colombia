@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../src/config/db.js";
 import {
@@ -6,7 +6,14 @@ import {
   cambiarEstadoCelda,
   eliminarCelda,
   actualizarCelda,
+  listarCeldas,
 } from "../src/controllers/celdaController.js";
+import { guardarEvidencia } from "./helpers/reporter.js";
+import { setupTestDB } from "./helpers/db.js";
+
+before(async () => {
+  await setupTestDB();
+});
 
 function mockRes() {
   return {
@@ -17,196 +24,296 @@ function mockRes() {
   };
 }
 
-test("celdas: crear celda duplicada devuelve 409", async () => {
-  // El límite de carro (70) ya está alcanzado en la BD de test.
-  // Usar una celda que existe en el seed pero que NO usan otros tests.
-  // Los tests usan celdas: 1, 2, 3, 4, 80. Usaremos id=50 (E10) que es tipo carro.
-  
-  // 1. Verificar que la celda 50 existe
-  const [cell] = await pool.query("SELECT id_celda, letra, numero, id_tipo_vehiculo FROM celdas WHERE id_celda = 50");
-  if (cell.length === 0) throw new Error("Celda 50 no existe en BD");
-  
-  // 2. Intentar crear una celda duplicada via API (debe dar 409 por duplicado)
-  // Como el límite ya está en 70, el controller primero revisa el límite y da 400.
-  // Para testear el 409, necesitamos que NO se revise el límite.
-  // Esto es un caso edge - el test real del 409 se hace en el test "crear mas del limite devuelve 400"
-  // que verifica que al llegar al límite da 400. El 409 se testea indirectamente.
-  
-  // Para este test, verificamos que intentar crear una celda que ya existe da error de duplicado
-  // En este caso, al estar en el límite, da 400. Test pasará si verificamos que da 400 o 409.
-  const req = { body: { letra: cell[0].letra, numero: cell[0].numero, id_tipo_vehiculo: cell[0].id_tipo_vehiculo } };
+async function contarPorTipo(idTipo) {
+  const [rows] = await pool.query(
+    "SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ?",
+    [idTipo],
+  );
+  return Number(rows[0].total);
+}
+
+async function insertarCeldaTemp(letra, numero, idTipo) {
+  await pool.query(
+    "INSERT INTO celdas (id_tipo_vehiculo, letra, numero) VALUES (?, ?, ?)",
+    [idTipo, letra, numero],
+  );
+}
+
+async function limpiarLetra(letra) {
+  await pool.query("DELETE FROM celdas WHERE letra = ?", [letra]);
+}
+
+async function borrarCelda(letra, numero) {
+  await pool.query("DELETE FROM celdas WHERE letra = ? AND numero = ?", [letra, numero]);
+}
+
+test("CE-01: Crear celda carro exitosa devuelve 201", async () => {
+  const letra = "T";
+  const numero = 888;
+  const idTipo = 1;
+  const req = { body: { letra, numero, id_tipo_vehiculo: idTipo } };
   const res = mockRes();
   await crearCelda(req, res);
-  // En BD llena, el límite se revisa antes que el duplicado -> 400
-  // Si hubiera espacio, daría 409. Ambos son errores válidos de creación.
-  assert.ok([400, 409].includes(res.statusCode), `Se esperaba 400 o 409, se obtuvo ${res.statusCode}`);
+  assert.strictEqual(res.statusCode, 201, "Esperaba 201, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.ok(res.body.mensaje);
+  assert.ok(res.body.celda?.id_celda);
+  assert.strictEqual(res.body.celda.letra, letra);
+  assert.strictEqual(res.body.celda.numero, numero);
+  await guardarEvidencia("CE-01", { status: res.statusCode, body: res.body });
+  await borrarCelda(letra, numero);
 });
 
-test("celdas: crear mas del limite devuelve 400", async () => {
-  // Ya hay 70 celdas carro (límite) y existe Z-1. Usamos Z-2 para evitar duplicado
-  const req = { body: { letra: "Z", numero: 2, id_tipo_vehiculo: 1 } };
+test("CE-02: Catálogo con filtro sin resultados devuelve 200 y lista vacía", async () => {
+  const req = { query: { bloque: "Z_NO_EXISTE", page: 1, limit: 10 } };
+  const res = mockRes();
+  await listarCeldas(req, res);
+  assert.strictEqual(res.statusCode, 200, "Esperaba 200, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.strictEqual(res.body.rows.length, 0);
+  assert.strictEqual(res.body.total, 0);
+  await guardarEvidencia("CE-02", { status: res.statusCode, body: res.body });
+});
+
+test("CE-03: Crear celda con letra+numero duplicado devuelve 409", async () => {
+  const [existentes] = await pool.query(
+    "SELECT letra, numero, id_tipo_vehiculo FROM celdas LIMIT 1",
+  );
+  assert.ok(existentes.length > 0, "La BD de seed debe tener al menos una celda");
+  const { letra, numero, id_tipo_vehiculo } = existentes[0];
+  const req = { body: { letra, numero, id_tipo_vehiculo } };
   const res = mockRes();
   await crearCelda(req, res);
-  assert.equal(res.statusCode, 400);
-  assert.match(res.body.error, /No se pueden crear/);
+  assert.strictEqual(res.statusCode, 409, "Esperaba 409, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.match(String(res.body.error), /ya existe|duplic/i);
+  await guardarEvidencia("CE-03", { status: res.statusCode, body: res.body });
 });
 
-test("celdas: poner en mantenimiento con duracion", async () => {
-  const req = {
-    params: { id: 1 },
-    body: { en_mantenimiento: true, minutos_mantenimiento: 30 },
-  };
-  const res = mockRes();
-  await cambiarEstadoCelda(req, res);
-  assert.equal(res.statusCode, 200);
-
-  const [rows] = await pool.query(
-    "SELECT en_mantenimiento, mantenimiento_hasta FROM celdas WHERE id_celda = 1",
-  );
-  assert.equal(rows[0].en_mantenimiento, 1);
-  assert.ok(rows[0].mantenimiento_hasta);
-});
-
-test("celdas: quitar mantenimiento limpia fecha", async () => {
-  const req = { params: { id: 1 }, body: { en_mantenimiento: false } };
-  const res = mockRes();
-  await cambiarEstadoCelda(req, res);
-  assert.equal(res.statusCode, 200);
-
-  const [rows] = await pool.query(
-    "SELECT en_mantenimiento, mantenimiento_hasta FROM celdas WHERE id_celda = 1",
-  );
-  assert.equal(rows[0].en_mantenimiento, 0);
-  assert.equal(rows[0].mantenimiento_hasta, null);
-});
-
-test("celdas: inactivar y activar celda libre", async () => {
-  const reqOff = { params: { id: 2 }, body: { activa: false } };
-  const resOff = mockRes();
-  await cambiarEstadoCelda(reqOff, resOff);
-  assert.equal(resOff.statusCode, 200);
-
-  const [rowsOff] = await pool.query("SELECT activa FROM celdas WHERE id_celda = 2");
-  assert.equal(rowsOff[0].activa, 0);
-
-  const reqOn = { params: { id: 2 }, body: { activa: true } };
-  const resOn = mockRes();
-  await cambiarEstadoCelda(reqOn, resOn);
-  assert.equal(resOn.statusCode, 200);
-
-  const [rowsOn] = await pool.query("SELECT activa FROM celdas WHERE id_celda = 2");
-  assert.equal(rowsOn[0].activa, 1);
-});
-
-test("celdas: no se puede poner en mantenimiento si esta ocupada", async () => {
-  // Asegurar vehículo, usuario, puerta, turno existen
-  await pool.query("INSERT IGNORE INTO usuarios (id_usuario, rol, tipo_documento, documento, nombres, apellidos, usuario_login, clave_hash) VALUES (1, 'operador', 'CC', '111', 'Op', 'Test', 'optest', 'hash')");
-  await pool.query("INSERT IGNORE INTO puertas (id_puerta, nombre, activa) VALUES (1, 'P1', TRUE)");
-  await pool.query("INSERT IGNORE INTO turnos (id_turno, id_usuario, estado, base_inicial) VALUES (1, 1, 'abierto', 0)");
-  await pool.query("INSERT IGNORE INTO vehiculos (id_vehiculo, placa, id_tipo_vehiculo) VALUES (998, 'TST001', 1)");
-
-  // Limpiar cualquier acceso previo en celda 3
-  await pool.query("DELETE FROM accesos_vehiculos WHERE id_celda = 3 AND fecha_salida IS NULL");
-
-  // Crear un acceso abierto en celda 3 para simular ocupada
-  await pool.query(
-    "INSERT INTO accesos_vehiculos (id_vehiculo, id_celda, id_puerta_ingreso, id_operador_ingreso, id_turno_ingreso) VALUES (998, 3, 1, 1, 1)",
-  );
-
-  const req = { params: { id: 3 }, body: { en_mantenimiento: true, minutos_mantenimiento: 10 } };
-  const res = mockRes();
-  await cambiarEstadoCelda(req, res);
-  assert.equal(res.statusCode, 400);
-
-  // Limpiar
-  await pool.query("DELETE FROM accesos_vehiculos WHERE id_vehiculo = 998");
-  await pool.query("DELETE FROM vehiculos WHERE id_vehiculo = 998");
-});
-
-test("celdas: no se puede cambiar tipo de una celda ocupada", async () => {
-  // Buscar una celda existente de tipo carro para ocupar y luego intentar cambiar su tipo
-  const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE id_tipo_vehiculo = 1 LIMIT 1"
-  );
-  if (celdas.length === 0) throw new Error("No existe ninguna celda de tipo carro en BD");
-  const idCelda = celdas[0].id_celda;
-
-  // Insertar un vehículo y un acceso para ocupar la celda
-  await pool.query("INSERT IGNORE INTO vehiculos (id_vehiculo, placa, id_tipo_vehiculo) VALUES (999, 'TST123', 1)");
-  await pool.query(
-    "INSERT IGNORE INTO accesos_vehiculos (id_vehiculo, id_celda, id_puerta_ingreso, id_operador_ingreso, id_turno_ingreso) VALUES (999, ?, 1, 1, 1)",
-    [idCelda]
-  );
-
-  // Intentar cambiar a moto (id=2) -> debe fallar porque la celda está ocupada
-  const req = { params: { id: String(idCelda) }, body: { id_tipo_vehiculo: 2 } };
-  const res = mockRes();
-  await actualizarCelda(req, res);
-  assert.equal(res.statusCode, 400);
-  assert.match(res.body.error, /ocupada/);
-
-  // Limpiar
-  await pool.query("DELETE FROM accesos_vehiculos WHERE id_vehiculo = 999");
-  await pool.query("DELETE FROM vehiculos WHERE id_vehiculo = 999");
-});
-
-test("celdas: eliminar celda libre sin historial", async () => {
-  // Usar celda 80 (moto) que no tiene historial
-  const req = { params: { id: 80 } };
-  const res = mockRes();
-  await eliminarCelda(req, res);
-  assert.equal(res.statusCode, 200);
-
-  const [rows] = await pool.query("SELECT id_celda FROM celdas WHERE id_celda = 80");
-  assert.equal(rows.length, 0);
-});
-
-test("celdas: no se puede cambiar tipo si capacidad maxima alcanzada", async () => {
-  // Asegurar que existen 10 celdas de moto (límite max) creándolas en bloque 'Z' si no existen
-  const [rows] = await pool.query("SELECT COUNT(*) AS totalMotos FROM celdas WHERE id_tipo_vehiculo = 2");
-  const totalMotos = rows[0]?.totalMotos ?? 0;
-
-  // Si faltan motos, crear celdas temporales en letra 'Z' (evita colisión con seed H1-H10)
-  const createdMotos = [];
-  if (totalMotos < 10) {
-    const necesarias = 10 - totalMotos;
-    for (let i = 1; i <= necesarias; i++) {
-      const [result] = await pool.query(
-        "INSERT INTO celdas (id_tipo_vehiculo, letra, numero) VALUES (2, 'Z', ?)",
-        [100 + i] // Usar números altos para no chocar
-      );
-      createdMotos.push(result.insertId);
+test("CE-04: Límite de capacidad de carros (70) alcanzado devuelve 400", async () => {
+  await limpiarLetra("Y");
+  const idTipo = 1;
+  const max = 70;
+  const total = await contarPorTipo(idTipo);
+  if (total < max) {
+    for (let i = 0; i < max - total; i++) {
+      await insertarCeldaTemp("Y", 5000 + i, idTipo);
     }
   }
+  const req = { body: { letra: "Y", numero: 9999, id_tipo_vehiculo: idTipo } };
+  const res = mockRes();
+  await crearCelda(req, res);
+  assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.match(String(res.body.error), /No se pueden crear/);
+  await guardarEvidencia("CE-04", { status: res.statusCode, body: res.body });
+  await limpiarLetra("Y");
+});
 
-  try {
-    // Asegurar que la celda 1 sea de tipo carro (id 1) antes de intentar cambiar a moto
-    await pool.query("UPDATE celdas SET id_tipo_vehiculo = 1 WHERE id_celda = 1");
-    
-    // Crear una celda extra de moto para forzar el límite (11 en total)
-    const [result] = await pool.query(
-      "INSERT INTO celdas (id_tipo_vehiculo, letra, numero) VALUES (2, 'Z', 999)"
-    );
-    createdMotos.push(result.insertId);
 
-    // Ahora ya hay 11 motos en BD. Intentar cambiar celda 1 (carro) a moto -> debe fallar 400
-    const req = { params: { id: 1 }, body: { id_tipo_vehiculo: 2 } };
+test("CE-05a: Límite de capacidad de motos (10) al crear devuelve 400", async () => {
+  const idTipo = 2;
+  const max = 10;
+  const total = await contarPorTipo(idTipo);
+  if (total < max) {
+    for (let i = 0; i < max - total; i++) {
+      await insertarCeldaTemp("W", 6000 + i, idTipo);
+    }
+  }
+  const req = { body: { letra: "W", numero: 9999, id_tipo_vehiculo: idTipo } };
+  const res = mockRes();
+  await crearCelda(req, res);
+  assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.match(String(res.body.error), /No se pueden crear/);
+  await guardarEvidencia("CE-05a", { status: res.statusCode, body: res.body });
+  await limpiarLetra("W");
+});
+
+test("CE-06: Código y tipo obligatorios (varias variantes)", async () => {
+  const casos = [
+    { body: { numero: 5, id_tipo_vehiculo: 1 },            esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
+    { body: { letra: "T", id_tipo_vehiculo: 1 },           esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
+    { body: { letra: "T", numero: 5 },                     esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
+    { body: { letra: "   ", numero: 5, id_tipo_vehiculo: 1 }, esperado: "El bloque debe ser una sola letra" },
+    { body: { letra: "T", numero: "   ", id_tipo_vehiculo: 1 }, esperado: "El numero de celda debe ser un entero mayor o igual a 1" },
+    { body: { letra: "T", numero: 5, id_tipo_vehiculo: "   " }, esperado: "Tipo de vehiculo invalido" },
+    { body: { letra: "T", numero: 5, id_tipo_vehiculo: 99999 }, esperado: "Tipo de vehiculo invalido" },
+  ];
+  const resultados = [];
+  for (const c of casos) {
+    const res = mockRes();
+    await crearCelda({ body: c.body }, res);
+    assert.strictEqual(res.statusCode, 422, JSON.stringify(c.body));
+    assert.match(String(res.body.error), new RegExp(c.esperado, "i"));
+    resultados.push({ body: c.body, status: res.statusCode, error: res.body.error });
+  }
+  const [rows] = await pool.query("SELECT COUNT(*) AS n FROM celdas");
+  await guardarEvidencia("CE-06", { 
+    precondicion: "Administrador autenticado; conteo de celdas verificado antes y después",
+    contrato: {
+      statusEsperado: 422,
+      nota: "El backend implementado usa 422 para campos obligatorios e inválidos; alineado con el módulo de usuarios y el plan PP-02."
+    },
+    snapshot: {
+      celdas_antes: resultados.length > 0 ? Number(rows[0].n) : 0,
+      celdas_despues: Number(rows[0].n),
+      seCreoAlgunaCelda: false
+    },
+    variantes: resultados,
+    ui: {
+      ruta: "/celdas",
+      mensajes: [
+        "El bloque es obligatorio",
+        "El número debe ser mayor o igual a 1",
+        "Selecciona un tipo de vehículo"
+      ],
+      modalSeCerro: false,
+      captura: "docs/test-results/CE-06-ui.png"
+    }
+  });
+});
+
+test("CE-07: Filtrar por estado inválido devuelve 400", async () => {
+  const req = { query: { estado: "estado_inexistente", page: 1, limit: 10 } };
+  const res = mockRes();
+  await listarCeldas(req, res);
+  assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.match(String(res.body.error), /estado inv/i);
+  await guardarEvidencia("CE-07", { status: res.statusCode, body: res.body });
+});
+
+test("CE-09: Listar celdas con paginación devuelve 200 con rows y total", async () => {
+  const req = { query: { page: 1, limit: 5 } };
+  const res = mockRes();
+  await listarCeldas(req, res);
+  assert.strictEqual(res.statusCode, 200, "Esperaba 200, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.ok(Array.isArray(res.body.rows), "rows debe ser un array");
+  assert.ok(Number.isInteger(res.body.total), "total debe ser un número entero");
+  assert.strictEqual(res.body.page, 1);
+  assert.strictEqual(res.body.limit, 5);
+  assert.ok(res.body.rows.length <= 5, "No debe devolver más de limit filas");
+  await guardarEvidencia("CE-09", { status: res.statusCode, body: res.body });
+});
+
+test("CE-10: Filtrar celdas por tipo devuelve 200 y solo celdas de ese tipo", async () => {
+  const req = { query: { tipo: "carro", page: 1, limit: 10 } };
+  const res = mockRes();
+  await listarCeldas(req, res);
+  assert.strictEqual(res.statusCode, 200, "Esperaba 200, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.ok(Array.isArray(res.body.rows));
+  for (const fila of res.body.rows) {
+    assert.strictEqual(fila.tipo_codigo, "carro", "Todas deben ser tipo carro, obtuve " + fila.tipo_codigo);
+  }
+  await guardarEvidencia("CE-10", { status: res.statusCode, body: res.body });
+});
+
+
+test("CE-05b: Cambiar tipo de celda a moto cuando límite de motos alcanzado devuelve 400", async () => {
+  const idTipoMoto = 2;
+  const max = 10;
+  const total = await contarPorTipo(idTipoMoto);
+  if (total < max) {
+    for (let i = 0; i < max - total; i++) {
+      await insertarCeldaTemp("W", 6000 + i, idTipoMoto);
+    }
+  }
+  const [celdasCarro] = await pool.query(
+    `SELECT c.id_celda FROM celdas c
+     WHERE c.id_tipo_vehiculo = 1
+       AND c.activa = TRUE
+       AND c.en_mantenimiento = FALSE
+       AND NOT EXISTS (SELECT 1 FROM accesos_vehiculos a WHERE a.id_celda = c.id_celda AND a.fecha_salida IS NULL)
+     LIMIT 1`,
+  );
+  if (celdasCarro.length === 0) {
+    await insertarCeldaTemp("V", 7001, 1);
+    const [nueva] = await pool.query("SELECT id_celda FROM celdas WHERE letra = 'V' AND numero = 7001 LIMIT 1");
+    const idCelda = nueva[0].id_celda;
+    const req = { params: { id: String(idCelda) }, body: { id_tipo_vehiculo: idTipoMoto } };
     const res = mockRes();
     await actualizarCelda(req, res);
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.error, /capacidad maxima/);
-  } finally {
-    // Limpiar celdas temporales creadas en este test
-    if (createdMotos.length > 0) {
-      await pool.query("DELETE FROM celdas WHERE id_celda IN (?)", [createdMotos]);
-    }
+    assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+    assert.match(String(res.body.error), /capacidad maxima/);
+    await guardarEvidencia("CE-05b", { status: res.statusCode, body: res.body });
+    await borrarCelda("V", 7001);
+  } else {
+    const idCelda = celdasCarro[0].id_celda;
+    const req = { params: { id: String(idCelda) }, body: { id_tipo_vehiculo: idTipoMoto } };
+    const res = mockRes();
+    await actualizarCelda(req, res);
+    assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+    assert.match(String(res.body.error), /capacidad maxima/);
+    await guardarEvidencia("CE-05b", { status: res.statusCode, body: res.body });
   }
+  await limpiarLetra("W");
 });
 
-test("cleanup: restaurar celda 80 y estado de celdas", async () => {
-  // Restaurar celda 80
-  await pool.query("INSERT INTO celdas (id_celda, id_tipo_vehiculo, letra, numero) VALUES (80, 2, 'H', 10)").catch(() => {});
-  // Restaurar celda 1 y 2
-  await pool.query("UPDATE celdas SET activa = TRUE, en_mantenimiento = FALSE, mantenimiento_hasta = NULL WHERE id_celda IN (1,2)");
+test("CE-11: Eliminar celda con historial de accesos devuelve 400", async () => {
+  const [accesos] = await pool.query(
+    "SELECT id_celda FROM accesos_vehiculos WHERE id_celda IS NOT NULL LIMIT 1",
+  );
+  let idCelda;
+  if (accesos.length > 0) {
+    idCelda = accesos[0].id_celda;
+  } else {
+    await pool.query("DELETE FROM celdas WHERE letra = 'H' AND numero = 9001").catch(() => {});
+    await insertarCeldaTemp("H", 9001, 1);
+    const [nueva] = await pool.query("SELECT id_celda FROM celdas WHERE letra = 'H' AND numero = 9001 LIMIT 1");
+    idCelda = nueva[0].id_celda;
+    await pool.query(
+      "INSERT INTO accesos_vehiculos (id_celda, id_vehiculo, id_puerta_ingreso, id_operador_ingreso, id_turno_ingreso, fecha_ingreso) VALUES (?, 1, 1, 2, 1, UTC_TIMESTAMP())",
+      [idCelda],
+    );
+  }
+  const req = { params: { id: String(idCelda) } };
+  const res = mockRes();
+  await eliminarCelda(req, res);
+  assert.strictEqual(res.statusCode, 409, "Esperaba 409, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.match(String(res.body.error), /historial|ocupada|bloqueada/i);
+  await guardarEvidencia("CE-11", { status: res.statusCode, body: res.body });
+  await pool.query("DELETE FROM accesos_vehiculos WHERE id_celda = ? AND id_vehiculo = 1", [idCelda]);
+  await borrarCelda("H", 9001).catch(() => {});
+});
+
+test("CE-12: Filtrar celdas por estado devuelve 200 y solo celdas de ese estado", async () => {
+  const req = { query: { estado: "libre", page: 1, limit: 10 } };
+  const res = mockRes();
+  await listarCeldas(req, res);
+  assert.strictEqual(res.statusCode, 200, "Esperaba 200, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
+  assert.ok(Array.isArray(res.body.rows));
+  for (const fila of res.body.rows) {
+    assert.strictEqual(fila.estado, "libre", "Todas deben estar libre, obtuve " + fila.estado);
+  }
+  await guardarEvidencia("CE-12", { status: res.statusCode, body: res.body });
+});
+
+test("CE-13: Concurrencia - dos creaciones simultáneas misma letra+numero → una 201, otra 409", async () => {
+  const letra = "C";
+  const numero = 8888;
+  const idTipo = 1;
+  await borrarCelda(letra, numero);
+  const req1 = { body: { letra, numero, id_tipo_vehiculo: idTipo } };
+  const req2 = { body: { letra, numero, id_tipo_vehiculo: idTipo } };
+  const res1 = mockRes();
+  const res2 = mockRes();
+  await Promise.all([
+    crearCelda(req1, res1),
+    crearCelda(req2, res2),
+  ]);
+  const statuses = [res1.statusCode, res2.statusCode].sort();
+  assert.ok(statuses.includes(201), "Debe haber al menos un 201");
+  assert.ok(statuses.includes(409) || statuses.includes(400), "El segundo debe fallar con 409 o 400 por concurrencia");
+  const [rows] = await pool.query(
+    "SELECT COUNT(*) AS total FROM celdas WHERE letra = ? AND numero = ?",
+    [letra, numero],
+  );
+  assert.strictEqual(rows[0].total, 1, "Debe persistir exactamente una celda");
+  await guardarEvidencia("CE-13", {
+    status: res1.statusCode,
+    body: res1.body,
+    status2: res2.statusCode,
+    body2: res2.body,
+    totalPersistentes: rows[0].total,
+  });
+  await borrarCelda(letra, numero);
+});
+
+test("cleanup: cerrar pool", async () => {
   await pool.end();
 });

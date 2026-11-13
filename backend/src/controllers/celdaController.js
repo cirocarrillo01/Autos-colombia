@@ -1,4 +1,5 @@
 ﻿// Gestión de celdas (RF3).
+import { responder } from "../utils/responseHelper.js";
 import { query, conTransaccion } from "../config/db.js";
 import {
   ESTADO_SQL,
@@ -29,9 +30,9 @@ const FILTROS_ESTADO = {
 /** Traduce ErrorNegocio -> respuesta; cualquier otro error -> 500 con `mensaje500`. */
 const manejar = (res, err, mensaje500) => {
   if (err instanceof ErrorNegocio)
-    return res.status(err.status).json({ error: err.message });
+    return responder(res, err.status, err.message);
   console.error(err);
-  return res.status(500).json({ error: mensaje500 });
+  return responder(res, 500, mensaje500);
 };
 
 export const listarCeldas = async (req, res) => {
@@ -51,7 +52,7 @@ export const listarCeldas = async (req, res) => {
     }
     if (estado) {
       const filtro = FILTROS_ESTADO[String(estado).toLowerCase()];
-      if (!filtro) return res.status(400).json({ error: "Estado inválido" });
+      if (!filtro) return responder(res, 400, "Estado inválido");
       conds.push(filtro);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
@@ -92,7 +93,7 @@ export const obtenerCelda = async (req, res) => {
     const [celda] = await query(`${SELECT_CELDA} WHERE c.id_celda = ?`, [
       req.params.id,
     ]);
-    if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
+    if (!celda) return responder(res, 404, "Celda no encontrada");
     res.json(celda);
   } catch (err) {
     manejar(res, err, "Error al obtener la celda");
@@ -103,28 +104,21 @@ export const crearCelda = async (req, res) => {
   try {
     const { letra, numero, id_tipo_vehiculo } = req.body ?? {};
     if (!letra || !numero || !id_tipo_vehiculo) {
-      return res
-        .status(400)
-        .json({ error: "Letra, numero y tipo de vehiculo son obligatorios" });
+      return responder(res, 422, "Letra, numero y tipo de vehiculo son obligatorios");
     }
-    if (!/^[A-Za-z]$/.test(String(letra)))
-      return res
-        .status(400)
-        .json({ error: "El bloque debe ser una sola letra (A-Z)" });
+    const letraNorm = String(letra).trim().toUpperCase();
+    if (!/^[A-Z]$/.test(letraNorm))
+      return responder(res, 422, "El bloque debe ser una sola letra (A-Z)");
     const n = Number(numero);
     if (!Number.isInteger(n) || n < 1)
-      return res
-        .status(400)
-        .json({
-          error: "El numero de celda debe ser un entero mayor o igual a 1",
-        });
+      return responder(res, 422, "El numero de celda debe ser un entero mayor o igual a 1");
 
     const [tipo] = await query(
       `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
       [id_tipo_vehiculo],
     );
     if (!tipo)
-      return res.status(400).json({ error: "Tipo de vehiculo invalido" });
+      return responder(res, 422, "Tipo de vehiculo invalido");
 
     const max = limiteCeldas(tipo.codigo);
     if (max !== null) {
@@ -133,26 +127,20 @@ export const crearCelda = async (req, res) => {
         [tipo.id_tipo_vehiculo],
       );
       if (Number(total) >= max)
-        return res
-          .status(400)
-          .json({
-            error: `No se pueden crear más de ${max} celdas para ${tipo.codigo}`,
-          });
+        return responder(res, 400, `No se pueden crear más de ${max} celdas para ${tipo.codigo}`);
     }
     const r = await query(
       `INSERT INTO celdas (id_tipo_vehiculo, letra, numero) VALUES (?, ?, ?)`,
-      [tipo.id_tipo_vehiculo, String(letra).toUpperCase(), n],
+      [tipo.id_tipo_vehiculo, letraNorm, n],
     );
     const [celda] = await query(
       `SELECT id_celda, codigo, letra, numero, id_tipo_vehiculo, activa, en_mantenimiento FROM celdas WHERE id_celda = ?`,
       [r.insertId],
     );
-    res.status(201).json(celda);
+    return responder(res, 201, "Celda creada correctamente", { celda });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY")
-      return res
-        .status(409)
-        .json({ error: "Ya existe una celda con esa letra y numero" });
+      return responder(res, 409, "Ya existe una celda con esa letra y numero");
     manejar(res, err, "Error al crear la celda");
   }
 };
@@ -161,26 +149,22 @@ export const actualizarCelda = async (req, res) => {
   try {
     const idTipo = Number(req.body?.id_tipo_vehiculo);
     if (!Number.isInteger(idTipo) || idTipo < 1)
-      return res
-        .status(400)
-        .json({ error: "El tipo de vehiculo es obligatorio" });
+      return responder(res, 422, "El tipo de vehiculo es obligatorio");
 
     const [celda] = await query(
       `SELECT c.id_celda, c.id_tipo_vehiculo, ${SQL_OCUPADA} AS ocupada FROM celdas c WHERE c.id_celda = ?`,
       [req.params.id],
     );
-    if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
+    if (!celda) return responder(res, 404, "Celda no encontrada");
     if (Number(celda.ocupada))
-      return res
-        .status(400)
-        .json({ error: "No se puede cambiar el tipo de una celda ocupada" });
+      return responder(res, 400, "No se puede cambiar el tipo de una celda ocupada");
 
     const [tipo] = await query(
       `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
       [idTipo],
     );
     if (!tipo)
-      return res.status(400).json({ error: "Tipo de vehiculo invalido" });
+      return responder(res, 422, "Tipo de vehiculo invalido");
 
     if (celda.id_tipo_vehiculo !== idTipo) {
       const max = limiteCeldas(tipo.codigo);
@@ -217,11 +201,11 @@ export const intercambiarTipoCelda = async (req, res) => {
     b = Number(req.body?.id_celda_2);
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1) {
     return res
-      .status(400)
+      .status(422)
       .json({ error: "Ambos IDs de celda son obligatorios" });
   }
   if (a === b)
-    return res.status(400).json({ error: "Debe elegir dos celdas distintas" });
+    return res.status(422).json({ error: "Debe elegir dos celdas distintas" });
   try {
     await conTransaccion(async (conn) => {
       const [filas] = await conn.query(
@@ -269,6 +253,25 @@ export const cambiarEstadoCelda = async (req, res) => {
     const cambios = [],
       params = [];
     if (typeof activa === "boolean") {
+      // Nueva validación de aforo al activar una celda desactivada
+      if (activa === true && celda.activa === 0) {
+        const [tipo] = await query(
+          `SELECT tv.codigo, tv.id_tipo_vehiculo FROM tipos_vehiculos tv
+           INNER JOIN celdas c ON c.id_tipo_vehiculo = tv.id_tipo_vehiculo
+           WHERE c.id_celda = ?`,
+          [req.params.id]
+        );
+        const max = limiteCeldas(tipo.codigo);
+        if (max !== null) {
+          const [{ total }] = await query(
+            `SELECT COUNT(*) AS total FROM celdas WHERE id_tipo_vehiculo = ? AND activa = TRUE`,
+            [tipo.id_tipo_vehiculo]
+          );
+          if (Number(total) >= max) {
+            return responder(res, 400, `No es posible habilitar esta celda: se ha alcanzado la capacidad máxima de ${max} celdas activas para ${tipo.codigo}s.`);
+          }
+        }
+      }
       cambios.push(`activa = ?`);
       params.push(activa);
     }
@@ -280,11 +283,7 @@ export const cambiarEstadoCelda = async (req, res) => {
           req.body.minutos_mantenimiento ?? req.body.duracion_minutos ?? 60,
         );
         if (!Number.isFinite(minutos) || minutos < 1) {
-          return res
-            .status(400)
-            .json({
-              error: "La duracion del mantenimiento debe ser mayor a 0 minutos",
-            });
+          return responder(res, 422, "La duracion del mantenimiento debe ser mayor a 0 minutos");
         }
         cambios.push(
           `mantenimiento_hasta = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE)`,
@@ -295,9 +294,7 @@ export const cambiarEstadoCelda = async (req, res) => {
       }
     }
     if (!cambios.length)
-      return res
-        .status(400)
-        .json({ error: "Debe indicar activa y/o en_mantenimiento" });
+      return responder(res, 422, "Debe indicar activa y/o en_mantenimiento");
 
     const vaInactiva = typeof activa === "boolean" ? !activa : !celda.activa;
     const vaMant =
@@ -334,13 +331,13 @@ export const eliminarCelda = async (req, res) => {
     if (!celda) return res.status(404).json({ error: "Celda no encontrada" });
     if (Number(celda.ocupada))
       return res
-        .status(400)
-        .json({ error: "No se puede eliminar una celda ocupada" });
+        .status(409)
+        .json({ error: "Acción bloqueada: la celda está actualmente ocupada por un vehículo." });
     if (Number(celda.historial))
       return res
-        .status(400)
+        .status(409)
         .json({
-          error: "No se puede eliminar una celda con historial de accesos",
+          error: "Acción bloqueada: existen registros históricos de ingresos y salidas vinculados a esta celda.",
         });
     await query(`DELETE FROM celdas WHERE id_celda = ?`, [id]);
     res.json({ mensaje: "Celda eliminada correctamente" });

@@ -6,6 +6,11 @@ import {
   registrarSalida,
   listarDentro,
 } from "../src/controllers/movimientoController.js";
+import { setupTestDB } from "./helpers/db.js";
+
+test("setup: inicializar BD", async () => {
+  await setupTestDB();
+});
 
 function mockRes() {
   const res = {
@@ -36,9 +41,9 @@ test("movimiento: entrada y salida de un vehiculo", async () => {
     }
   }
 
-  // Obtener id de celda B-01
+  // Obtener id de celda B-1
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-01' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-1' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -81,7 +86,7 @@ test("movimiento: entrada duplicada devuelve 409 o 400", async () => {
   }
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-02' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-2' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -106,39 +111,41 @@ test("movimiento: entrada duplicada devuelve 409 o 400", async () => {
 });
 
 test("movimiento: entrada en celda ya ocupada devuelve 409", async () => {
-  for (const placa of ["CAR004", "CAR005"]) {
+  for (const placa of ["CAR002", "CAR003"]) {
     const [vRows] = await pool.query(
       "SELECT id_vehiculo FROM vehiculos WHERE placa = ? LIMIT 1",
       [placa],
     );
-    const idV = vRows[0].id_vehiculo;
-    await pool.query(
-      "UPDATE mensualidades SET estado = 'activa', fecha_inicio = '2020-01-01', fecha_fin = '2099-12-31' WHERE id_vehiculo = ?",
-      [idV],
-    );
+    if (vRows.length > 0) {
+      const idV = vRows[0].id_vehiculo;
+      await pool.query(
+        "UPDATE mensualidades SET estado = 'activa', fecha_inicio = '2020-01-01', fecha_fin = '2099-12-31' WHERE id_vehiculo = ?",
+        [idV],
+      );
+    }
   }
   await pool.query(
-    "UPDATE accesos_vehiculos SET fecha_salida = UTC_TIMESTAMP() WHERE id_vehiculo IN (SELECT id_vehiculo FROM vehiculos WHERE placa IN ('CAR004','CAR005')) AND fecha_salida IS NULL",
+    "UPDATE accesos_vehiculos SET fecha_salida = UTC_TIMESTAMP() WHERE id_vehiculo IN (SELECT id_vehiculo FROM vehiculos WHERE placa IN ('CAR002','CAR003')) AND fecha_salida IS NULL",
   );
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-03' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-3' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
-  const req1 = { body: { placa: "CAR004", id_celda: idCelda }, user: { id_usuario: 1 } };
+  const req1 = { body: { placa: "CAR002", id_celda: idCelda }, user: { id_usuario: 1 } };
   const res1 = mockRes();
   await registrarEntrada(req1, res1);
   assert.equal(res1.statusCode, 201);
 
-  const req2 = { body: { placa: "CAR005", id_celda: idCelda }, user: { id_usuario: 1 } };
+  const req2 = { body: { placa: "CAR003", id_celda: idCelda }, user: { id_usuario: 1 } };
   const res2 = mockRes();
   await registrarEntrada(req2, res2);
   assert.equal(res2.statusCode, 409);
   assert.equal(res2.body.error, "La celda ya no está disponible");
 
   await registrarSalida(
-    { body: { placa: "CAR004" }, user: { id_usuario: 1 } },
+    { body: { placa: "CAR002" }, user: { id_usuario: 1 } },
     mockRes(),
   );
 });
@@ -166,7 +173,7 @@ test("movimiento: entrada con mensualidad que aun no inicia devuelve 403", async
     );
 
     const [celdas] = await pool.query(
-      "SELECT id_celda FROM celdas WHERE codigo = 'B-04' LIMIT 1",
+      "SELECT id_celda FROM celdas WHERE codigo = 'B-4' LIMIT 1",
     );
     const idCelda = celdas[0].id_celda;
 
@@ -194,8 +201,8 @@ test("movimiento: GET /dentro por documento devuelve los 2 vehiculos del propiet
     "UPDATE accesos_vehiculos SET fecha_salida = UTC_TIMESTAMP() WHERE id_vehiculo IN (SELECT id_vehiculo FROM vehiculos WHERE placa IN ('CAR001','CAR002')) AND fecha_salida IS NULL",
   );
 
-  const [c1] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-05' LIMIT 1");
-  const [c2] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-06' LIMIT 1");
+  const [c1] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-5' LIMIT 1");
+  const [c2] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-6' LIMIT 1");
 
   await registrarEntrada(
     { body: { placa: "CAR001", id_celda: c1[0].id_celda }, user: { id_usuario: 1 } },
@@ -242,7 +249,7 @@ test("movimiento: salida de vehiculo que ya salio devuelve 400 y audita el recha
   );
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-07' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-7' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 

@@ -23,11 +23,29 @@ test.describe("E2E Parking Flow with Mocking", () => {
         }
         
         if (urlStr.includes('/api/vehiculos/buscar/')) {
-          return new Response(JSON.stringify({ placa: "ABC123", estado: "Fuera", tipoCodigo: "CAR" }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          // backend: estadoMensualidad corregido a "Al día", tipoCodigo a "carro"
+          return new Response(JSON.stringify({ 
+            placa: "ABC123", 
+            estado: "Fuera", 
+            tipo: "carro", 
+            estadoMensualidad: "Al día",
+            tipoCodigo: "carro" 
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         
-        if (urlStr.includes('/api/celdas/disponibles/')) {
-          return new Response(JSON.stringify([{ id_celda: 1, codigo: "A1" }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        if (urlStr.includes('/api/vehiculos/') && !urlStr.includes('/api/vehiculos/buscar/')) {
+          // backend: estadoMensualidad corregido a "Al día", tipoCodigo a "carro"
+          return new Response(JSON.stringify({ 
+            placa: "ABC123", 
+            estado: "Fuera", 
+            tipo: "carro", 
+            estadoMensualidad: "Al día",
+            tipoCodigo: "carro" 
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        if (urlStr.includes('/api/celdas/disponibles')) {
+          return new Response(JSON.stringify([{ id_celda: 1, codigo: "A1", tipo: "carro" }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         
         if (urlStr.includes('/api/movimientos')) {

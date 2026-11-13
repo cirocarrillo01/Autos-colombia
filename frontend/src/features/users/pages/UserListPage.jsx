@@ -73,7 +73,7 @@ export default function UserListPage() {
     }
   }, [aplicados, page]);
 
-  usePolling(cargar, 30000);
+  usePolling(cargar, 60000);
 
   const buscar = (e) => {
     e.preventDefault();

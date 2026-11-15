@@ -1,9 +1,14 @@
-﻿import { test } from "node:test";
+﻿import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../src/config/db.js";
 import { guardarEvidencia } from "./helpers/reporter.js";
 import * as authService from "../src/services/authService.js";
 import * as userServices from "../src/services/userServices.js";
+import { setupTestDB } from "./helpers/db.js";
+
+before(async () => {
+  await setupTestDB();
+});
 
 function mockRes() {
   return {
@@ -48,7 +53,7 @@ test("US-04: Login campos vacíos", async () => {
   const { login } = await import("../src/controllers/authController.js");
   await login(req, res);
   await guardarEvidencia("US-04", { status: res.statusCode, body: res.body });
-  assertError(res, 400, "obligatorios");
+  assertError(res, 422, "obligatori");
 });
 
 test("US-11: Registro con rol inválido", async () => {
@@ -90,7 +95,7 @@ test("usuarios: registrar usuario sin claveAdmin devuelve 422 con error", async 
   const res = mockRes();
   const { register } = await import("../src/controllers/authController.js");
   await register(req, res);
-  assertError(res, 422, "clave de administrador");
+  assertError(res, 422, "obligatorios");
 });
 
 test("usuarios: registrar usuario con claveAdmin incorrecta devuelve 403 con error", async () => {

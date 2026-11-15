@@ -68,7 +68,8 @@ export default function FormularioIngreso() {
       }
 
       try {
-        const disponibles = await obtenerCeldasDisponibles(v.tipoCodigo);
+        const r = await obtenerCeldasDisponibles(v.tipoCodigo);
+        const disponibles = r?.data ?? r;
         if (!disponibles.length) {
           return setError(MSG_SIN_CELDAS);
         }
@@ -98,7 +99,8 @@ export default function FormularioIngreso() {
 
     try {
       if (esDocumento(texto)) {
-        const lista = await buscarVehiculosPorDocumento(texto);
+        const r = await buscarVehiculosPorDocumento(texto);
+        const lista = r?.data ?? r;
         return lista.length === 1
           ? procesarVehiculo(lista[0])
           : setOpciones(lista);
@@ -166,7 +168,8 @@ export default function FormularioIngreso() {
         setCeldaSeleccionada(null);
 
         try {
-          const d = await obtenerCeldasDisponibles(vehiculo.tipoCodigo);
+          const r = await obtenerCeldasDisponibles(vehiculo.tipoCodigo);
+          const d = r?.data ?? r;
           setCeldas(d);
           if (!d.length) setError(MSG_SIN_CELDAS);
         } catch (e2) {

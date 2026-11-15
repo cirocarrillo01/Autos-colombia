@@ -89,3 +89,4 @@ generar-reporte-duo.ps1
 verificar_seed.mjs
 # Texto especifico de este proyecto
 reporte.txt
+.puml/

@@ -8,6 +8,8 @@ import {
 import { paginar, likeSeguro } from "../utils/consultas.js";
 import { aBooleano } from "../utils/errores.js";
 import { VALID_TIPOS_DOCUMENTO } from "../middleware/validation.js";
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
 
 const SELECT_VEHICULO = `
   SELECT v.id_vehiculo, v.placa, v.propietario_nombre, v.propietario_documento, v.modelo, v.nombre_modelo, v.color,
@@ -43,23 +45,23 @@ async function armarRespuestaVehiculo(v) {
   };
 }
 
-const error500 = (res, err, msg) => {
+const error500 = (res, err, msg = MSG.ERROR_INTERNO) => {
   console.error(err);
-  res.status(500).json({ error: msg });
+  responder(res, 500, msg);
 };
 
 export const buscarVehiculoPorPlaca = async (req, res) => {
   try {
     const f = validarPlaca(req.params.placa);
-    if (!f.valida) return res.status(400).json({ error: f.error });
+    if (!f.valida) return responder(res, 422, f.error);
     const [v] = await query(
       `${SELECT_VEHICULO} WHERE v.placa = ? AND v.activo = TRUE LIMIT 1`,
       [f.placa],
     );
-    if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
-    res.json(await armarRespuestaVehiculo(v));
+    if (!v) return responder(res, 404, MSG.NO_ENCONTRADO("Vehículo"));
+    return responder(res, 200, MSG.ENCONTRADO("Vehículo"), await armarRespuestaVehiculo(v));
   } catch (err) {
-    error500(res, err, "Error al consultar el vehículo");
+    error500(res, err);
   }
 };
 
@@ -68,21 +70,14 @@ export const buscarVehiculosPorDocumento = async (req, res) => {
   try {
     const documento = String(req.params.documento ?? "").trim();
     if (!/^[A-Za-z0-9]{5,20}$/.test(documento))
-      return res
-        .status(400)
-        .json({
-          error:
-            "El documento debe tener entre 5 y 20 caracteres alfanuméricos",
-        });
+      return responder(res, 422, "El documento debe tener entre 5 y 20 caracteres alfanuméricos");
     const vehiculos = await query(
       `${SELECT_VEHICULO} WHERE v.propietario_documento = ? AND v.activo = TRUE ORDER BY v.placa`,
       [documento],
     );
     if (!vehiculos.length)
-      return res
-        .status(404)
-        .json({ error: "No hay vehículos registrados con ese documento" });
-    res.json(await Promise.all(vehiculos.map(armarRespuestaVehiculo)));
+      return responder(res, 404, "No hay vehículos registrados con ese documento");
+    return responder(res, 200, MSG.LISTADO("Vehículos"), await Promise.all(vehiculos.map(armarRespuestaVehiculo)));
   } catch (err) {
     error500(res, err, "Error al consultar los vehículos");
   }
@@ -108,9 +103,7 @@ export const listarVehiculos = async (req, res) => {
     if (activo !== undefined) {
       const b = aBooleano(activo);
       if (b === null)
-        return res
-          .status(400)
-          .json({ error: "El filtro activo debe ser true o false" });
+        return responder(res, 422, "El filtro activo debe ser true o false");
       conds.push(`v.activo = ?`);
       params.push(b ? 1 : 0);
     }
@@ -123,7 +116,7 @@ export const listarVehiculos = async (req, res) => {
       [...params, limit, offset],
     );
     const [{ total }] = await query(`SELECT COUNT(*) AS total ${FROM}`, params);
-    res.json({ rows, total: Number(total), page, limit });
+    return responder(res, 200, MSG.LISTADO("Vehículos"), { rows, total: Number(total), page, limit });
   } catch (err) {
     error500(res, err, "Error al listar los vehículos");
   }
@@ -133,7 +126,7 @@ export const crearVehiculo = async (req, res) => {
   try {
     const b = req.body ?? {};
     const formato = validarPlaca(b.placa);
-    if (!formato.valida) return res.status(400).json({ error: formato.error });
+    if (!formato.valida) return responder(res, 422, formato.error);
     const faltan = [
       "id_tipo_vehiculo",
       "color",
@@ -145,24 +138,20 @@ export const crearVehiculo = async (req, res) => {
       (k) => b[k] === undefined || b[k] === null || String(b[k]).trim() === "",
     );
     if (faltan.length)
-      return res
-        .status(400)
-        .json({ error: `Campos obligatorios faltantes: ${faltan.join(", ")}` });
+      return responder(res, 422, `Campos obligatorios faltantes: ${faltan.join(", ")}`);
 
     const tipoDoc = b.propietario_tipo_documento ?? "cc";
     if (!VALID_TIPOS_DOCUMENTO.includes(tipoDoc))
-      return res
-        .status(400)
-        .json({ error: "Tipo de documento del propietario inválido" });
+      return responder(res, 422, "Tipo de documento del propietario inválido");
 
     const [tipo] = await query(
       `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
       [b.id_tipo_vehiculo],
     );
     if (!tipo)
-      return res.status(400).json({ error: "Tipo de vehículo inválido" });
+      return responder(res, 422, "Tipo de vehículo inválido");
     const porTipo = validarPlaca(b.placa, tipo.codigo);
-    if (!porTipo.valida) return res.status(400).json({ error: porTipo.error });
+    if (!porTipo.valida) return responder(res, 422, porTipo.error);
 
     // BUG CRÍTICO corregido: el INSERT tenía `NULL` literal para el email y solo 9 placeholders,
     // pero se pasaban 10 parámetros -> "Incorrect arguments" en TODA creación de vehículos. Y el email nunca se guardaba.
@@ -183,12 +172,10 @@ export const crearVehiculo = async (req, res) => {
         b.propietario_email ?? null,
       ],
     );
-    res.status(201).json({ id_vehiculo: r.insertId, placa: formato.placa });
+    return responder(res, 201, MSG.CREADO("Vehículo"), { id_vehiculo: r.insertId, placa: formato.placa });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY")
-      return res
-        .status(409)
-        .json({ error: "Ya existe un vehículo con esa placa" });
+      return responder(res, 409, MSG.DUPLICADO("Vehículo (Placa)"));
     error500(res, err, "Error al registrar el vehículo");
   }
 };
@@ -208,21 +195,19 @@ const CAMPOS_EDITABLES = [
 export const actualizarVehiculo = async (req, res) => {
   try {
     const f = validarPlaca(req.params.placa);
-    if (!f.valida) return res.status(400).json({ error: f.error });
+    if (!f.valida) return responder(res, 422, f.error);
     const [v] = await query(
       `SELECT id_vehiculo FROM vehiculos WHERE placa = ? LIMIT 1`,
       [f.placa],
     );
-    if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
+    if (!v) return responder(res, 404, MSG.NO_ENCONTRADO("Vehículo"));
 
     const b = req.body ?? {};
     if (
       b.propietario_tipo_documento !== undefined &&
       !VALID_TIPOS_DOCUMENTO.includes(b.propietario_tipo_documento)
     ) {
-      return res
-        .status(400)
-        .json({ error: "Tipo de documento del propietario inválido" });
+      return responder(res, 422, "Tipo de documento del propietario inválido");
     }
     const sets = [],
       params = [];
@@ -232,12 +217,12 @@ export const actualizarVehiculo = async (req, res) => {
         params.push(b[c]);
       }
     if (!sets.length)
-      return res.status(400).json({ error: "No hay campos para actualizar" });
+      return responder(res, 422, "No hay campos para actualizar");
     await query(
       `UPDATE vehiculos SET ${sets.join(", ")} WHERE id_vehiculo = ?`,
       [...params, v.id_vehiculo],
     );
-    res.json({ mensaje: "Vehículo actualizado correctamente" });
+    return responder(res, 200, MSG.ACTUALIZADO("Vehículo"));
   } catch (err) {
     error500(res, err, "Error al actualizar el vehículo");
   }
@@ -246,41 +231,32 @@ export const actualizarVehiculo = async (req, res) => {
 export const cambiarEstadoVehiculo = async (req, res) => {
   try {
     const f = validarPlaca(req.params.placa);
-    if (!f.valida) return res.status(400).json({ error: f.error });
+    if (!f.valida) return responder(res, 422, f.error);
     // Antes cualquier valor distinto de false ("foo", 0...) ACTIVABA el vehículo.
     const activo = aBooleano(req.body?.activo);
     if (activo === null)
-      return res
-        .status(400)
-        .json({ error: "El campo activo es obligatorio (true/false)" });
+      return responder(res, 422, "El campo activo es obligatorio (true/false)");
 
     const [v] = await query(
       `SELECT id_vehiculo FROM vehiculos WHERE placa = ? LIMIT 1`,
       [f.placa],
     );
-    if (!v) return res.status(404).json({ error: "Vehículo no encontrado" });
+    if (!v) return responder(res, 404, MSG.NO_ENCONTRADO("Vehículo"));
     if (!activo && (await dentro(v.id_vehiculo))) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "No se puede desactivar un vehículo que está dentro del parqueadero",
-        });
+      return responder(res, 400, "No se puede desactivar un vehículo que está dentro del parqueadero");
     }
     await query(`UPDATE vehiculos SET activo = ? WHERE id_vehiculo = ?`, [
       activo,
       v.id_vehiculo,
     ]);
-    res.json({
-      mensaje: `Vehículo ${activo ? "activado" : "desactivado"} correctamente`,
-    });
+    return responder(res, 200, `Vehículo ${activo ? "activado" : "desactivado"} exitosamente.`);
   } catch (err) {
     error500(res, err, "Error al cambiar el estado del vehículo");
   }
 };
 
 const gone = (mensaje) => (_req, res) =>
-  res.status(410).json({ error: mensaje });
+  responder(res, 410, mensaje);
 export const asignarCeldaFija = gone(
   "La asignación de celdas fijas ya no está disponible.",
 );

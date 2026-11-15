@@ -1,13 +1,14 @@
 ﻿// Autorización por rol. Usar DESPUÉS de autenticar.
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
+
 export const autorizarRoles =
   (...roles) =>
   (req, res, next) => {
     if (!req.user)
-      return res.status(401).json({ error: "Autenticación requerida" });
+      return responder(res, 401, MSG.TOKEN_REQUERIDO);
     if (!roles.includes(req.user.rol)) {
-      return res
-        .status(403)
-        .json({ error: "No tiene permisos para realizar esta acción" });
+      return responder(res, 403, MSG.ACCESO_DENEGADO);
     }
     next();
   };

@@ -43,13 +43,13 @@ export default function OperatorCeldasPage() {
 
   const cargar = useCallback(async () => {
     try {
-      const [lista, b, r] = await Promise.all([
+      const [lista, bRes, r] = await Promise.all([
         listarCeldas({ ...filtros, page, limit: LIMITE }),
         celdasPorBloque(),
         resumenCeldas(),
       ]);
       setData(lista);
-      setBloques(b);
+      setBloques(bRes?.data ?? bRes);
       setResumen(r);
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });

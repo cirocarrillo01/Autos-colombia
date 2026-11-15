@@ -43,21 +43,20 @@ app.use(
 );
 
 import { noCache } from "./middleware/noCache.js";
+import { responder } from "./utils/responseHelper.js";
+import { MSG } from "./utils/messages.js";
 
 app.use("/api", noCache);
 app.use("/api", routes);
 app.use("/api", (_req, res) =>
-  res.status(404).json({ error: "Ruta no encontrada" }),
+  responder(res, 404, MSG.NO_ENCONTRADO("Ruta"))
 );
 
 app.use((err, _req, res, _next) => {
   const status = err.status ?? err.statusCode ?? 500;
   if (status >= 500) console.error(err);
-  res
-    .status(status)
-    .json({
-      error: status >= 500 ? "Error interno del servidor" : err.message,
-    });
+  const msg = status >= 500 ? MSG.ERROR_INTERNO : err.message;
+  responder(res, status, msg);
 });
 
 export default app;

@@ -8,14 +8,17 @@ import vehiculos from "./vehiculos.js";
 import celdas from "./celdas.js";
 import movimientos from "./movimientos.js";
 
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
+
 const router = Router();
 
 /**
  * @route GET /api/health
- * @returns {Object} { status: 'ok', message: string }
+ * @returns {Object} { mensaje: string }
  */
 router.get("/health", (_req, res) => {
-  res.json({ status: "ok", message: "API Auto Colombia funcionando" });
+  return responder(res, 200, "API Auto Colombia funcionando", { status: "ok" });
 });
 
 router.use("/auth", authRoutes);

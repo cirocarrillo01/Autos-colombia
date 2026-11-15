@@ -58,7 +58,8 @@ export default function FormularioSalida() {
 
     setCargando(true);
     try {
-      const lista = await buscarVehiculosDentro(consulta);
+      const r = await buscarVehiculosDentro(consulta);
+      const lista = r?.data ?? r;
       setCargando(false);
 
       if (lista.length === 1) {

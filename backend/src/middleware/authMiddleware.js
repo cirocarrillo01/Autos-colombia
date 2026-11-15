@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 import { env } from "../config/envLoader.js";
 import { query } from "../config/db.js";
 import * as revokedTokenRepository from "../repositories/revokedTokenRepository.js";
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
 
 const ALGORITMO = "HS256";
 
@@ -32,14 +34,14 @@ export const autenticar = async (req, res, next) => {
   try {
     const token = extraerBearer(req.headers.authorization);
     if (!token)
-      return res.status(401).json({ error: "Token de acceso requerido" });
+      return responder(res, 401, MSG.TOKEN_REQUERIDO);
 
     const decoded = verificarToken(token);
     if (
       decoded.jti &&
       (await revokedTokenRepository.estaRevocado(decoded.jti))
     ) {
-      return res.status(401).json({ error: "Token revocado o sesión cerrada" });
+      return responder(res, 401, "Token revocado o sesión cerrada");
     }
 
     // Incluye email y telefono: /auth/me los devolvía siempre como undefined.
@@ -48,23 +50,19 @@ export const autenticar = async (req, res, next) => {
        FROM usuarios WHERE id_usuario = ?`,
       [decoded.id_usuario],
     );
-    if (!u) return res.status(401).json({ error: "Usuario no encontrado" });
+    if (!u) return responder(res, 401, "Usuario no encontrado");
     if (u.estado !== "activo") {
-      return res
-        .status(403)
-        .json({ error: "Usuario inactivo. No puede iniciar sesión." });
+      return responder(res, 403, "Usuario inactivo. No puede iniciar sesión.");
     }
 
     req.user = { ...u, nombreCompleto: `${u.nombres} ${u.apellidos}` };
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
-      return res
-        .status(401)
-        .json({ error: "Sesión expirada. Inicie sesión de nuevo." });
+      return responder(res, 401, MSG.SESION_EXPIRADA);
     }
     if (err.name === "JsonWebTokenError" || err.name === "NotBeforeError") {
-      return res.status(401).json({ error: "Token inválido" });
+      return responder(res, 401, "Token inválido");
     }
     next(err);
   }

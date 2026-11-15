@@ -15,12 +15,9 @@ import {
 } from "../utils/fechas.js";
 import { paginar, likeSeguro } from "../utils/consultas.js";
 import { ErrorNegocio } from "../utils/errores.js";
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
 
-const MSG = {
-  YA_DENTRO: "El vehículo ya se encuentra dentro del parqueadero",
-  NO_DENTRO: "El vehículo no se encuentra en el parqueadero",
-  CELDA_NO_DISPONIBLE: "La celda ya no está disponible",
-};
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 async function puertaActiva(conn) {
@@ -40,7 +37,7 @@ async function operadorYTurno(conn, idUsuario) {
   if (!idUsuario)
     throw new ErrorNegocio(
       401,
-      "Sesión requerida para registrar el movimiento",
+      MSG.TOKEN_REQUERIDO,
     );
   const [turnos] = await conn.query(
     `SELECT id_turno FROM turnos WHERE id_usuario = ? AND estado = 'abierto' LIMIT 1`,
@@ -93,7 +90,7 @@ async function ejecutar(req, res, trabajo, ctx = {}) {
     await conn.beginTransaction();
     const { status, body } = await trabajo(conn);
     await conn.commit();
-    res.status(status).json(body);
+    return responder(res, status, body.mensaje ?? "Operación exitosa", body);
   } catch (err) {
     try {
       await conn.rollback();
@@ -102,17 +99,17 @@ async function ejecutar(req, res, trabajo, ctx = {}) {
     }
     if (err instanceof ErrorNegocio) {
       await auditarRechazo(req, ctx, err.message);
-      return res.status(err.status).json({ error: err.message });
+      return responder(res, err.status, err.message);
     }
     if (err.code === "ER_DUP_ENTRY") {
       const msg = String(err.message).includes("uq_acceso_celda_ocupada")
-        ? MSG.CELDA_NO_DISPONIBLE
-        : MSG.YA_DENTRO;
+        ? "La celda ya no está disponible"
+        : MSG.VEHICULO_DENTRO;
       await auditarRechazo(req, ctx, msg);
-      return res.status(409).json({ error: msg });
+      return responder(res, 409, msg);
     }
     console.error("Error en movimiento:", err);
-    res.status(500).json({ error: "Error interno al registrar el movimiento" });
+    responder(res, 500, MSG.ERROR_INTERNO);
   } finally {
     conn.release();
   }
@@ -121,14 +118,14 @@ async function ejecutar(req, res, trabajo, ctx = {}) {
 export const registrarEntrada = (req, res) => {
   const { placa, id_celda } = req.body ?? {};
   if (!placa || !id_celda)
-    return res.status(400).json({ error: "Placa y celda requeridos" });
+    return responder(res, 422, "Placa y celda requeridos");
 
   return ejecutar(
     req,
     res,
     async (conn) => {
       const formato = validarPlaca(placa);
-      if (!formato.valida) throw new ErrorNegocio(400, formato.error);
+      if (!formato.valida) throw new ErrorNegocio(422, formato.error);
 
       const [vehiculos] = await conn.query(
         `SELECT v.id_vehiculo, v.placa, v.id_tipo_vehiculo, tv.nombre AS tipo, tv.codigo AS tipo_codigo
@@ -137,11 +134,11 @@ export const registrarEntrada = (req, res) => {
         [formato.placa],
       );
       if (!vehiculos.length)
-        throw new ErrorNegocio(404, "Vehículo no encontrado");
+        throw new ErrorNegocio(404, MSG.NO_ENCONTRADO("Vehículo"));
       const v = vehiculos[0];
       if (!validarPlaca(v.placa, v.tipo_codigo).valida) {
         throw new ErrorNegocio(
-          400,
+          422,
           `La placa ${v.placa} no tiene el formato válido para ${v.tipo}`,
         );
       }
@@ -150,7 +147,7 @@ export const registrarEntrada = (req, res) => {
         `SELECT id_acceso FROM accesos_vehiculos WHERE id_vehiculo = ? AND fecha_salida IS NULL LIMIT 1`,
         [v.id_vehiculo],
       );
-      if (dentro.length) throw new ErrorNegocio(400, MSG.YA_DENTRO);
+      if (dentro.length) throw new ErrorNegocio(400, MSG.VEHICULO_DENTRO);
 
       await liberarMantenimientosExpirados(conn);
 
@@ -166,11 +163,11 @@ export const registrarEntrada = (req, res) => {
         `SELECT id_celda, codigo, id_tipo_vehiculo FROM celdas WHERE id_celda = ? AND activa = TRUE AND en_mantenimiento = FALSE LIMIT 1 FOR UPDATE`,
         [id_celda],
       );
-      if (!celdas.length) throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
+      if (!celdas.length) throw new ErrorNegocio(409, "La celda ya no está disponible");
       const c = celdas[0];
       if (c.id_tipo_vehiculo !== v.id_tipo_vehiculo)
         throw new ErrorNegocio(
-          400,
+          422,
           "La celda no es compatible con el tipo de vehículo",
         );
 
@@ -178,7 +175,7 @@ export const registrarEntrada = (req, res) => {
         `SELECT id_acceso FROM accesos_vehiculos WHERE id_celda = ? AND fecha_salida IS NULL LIMIT 1`,
         [c.id_celda],
       );
-      if (ocupada.length) throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
+      if (ocupada.length) throw new ErrorNegocio(409, "La celda ya no está disponible");
 
       const { idOperador, idTurno } = await operadorYTurno(
         conn,
@@ -215,21 +212,21 @@ export const registrarEntrada = (req, res) => {
 
 export const registrarSalida = (req, res) => {
   const { placa } = req.body ?? {};
-  if (!placa) return res.status(400).json({ error: "Placa requerida" });
+  if (!placa) return responder(res, 422, "Placa requerida");
 
   return ejecutar(
     req,
     res,
     async (conn) => {
       const formato = validarPlaca(placa);
-      if (!formato.valida) throw new ErrorNegocio(400, formato.error);
+      if (!formato.valida) throw new ErrorNegocio(422, formato.error);
 
       const [vehiculos] = await conn.query(
         `SELECT v.id_vehiculo, v.placa, tv.nombre AS tipo FROM vehiculos v
        INNER JOIN tipos_vehiculos tv ON tv.id_tipo_vehiculo = v.id_tipo_vehiculo WHERE v.placa = ? LIMIT 1`,
         [formato.placa],
       );
-      if (!vehiculos.length) throw new ErrorNegocio(404, MSG.NO_DENTRO);
+      if (!vehiculos.length) throw new ErrorNegocio(404, MSG.VEHICULO_FUERA);
       const v = vehiculos[0];
 
       const [accesos] = await conn.query(
@@ -238,7 +235,7 @@ export const registrarSalida = (req, res) => {
        WHERE a.id_vehiculo = ? AND a.fecha_salida IS NULL ORDER BY a.fecha_ingreso DESC LIMIT 1 FOR UPDATE`,
         [v.id_vehiculo],
       );
-      if (!accesos.length) throw new ErrorNegocio(400, MSG.NO_DENTRO);
+      if (!accesos.length) throw new ErrorNegocio(400, MSG.VEHICULO_FUERA);
       const acceso = accesos[0];
 
       const { idOperador, idTurno } = await operadorYTurno(
@@ -280,9 +277,7 @@ export const listarDentro = async (req, res) => {
   try {
     const q = String(req.query.q ?? "").trim();
     if (!q)
-      return res
-        .status(400)
-        .json({ error: "Ingrese una placa o un documento" });
+      return responder(res, 422, "Ingrese una placa o un documento");
     const [rows] = await pool.query(
       `SELECT a.id_acceso, v.placa, v.propietario_nombre, v.propietario_documento, tv.nombre AS tipo, tv.codigo AS tipo_codigo,
               c.codigo AS celda, a.fecha_ingreso, UTC_TIMESTAMP() AS ahora, TIMESTAMPDIFF(MINUTE, a.fecha_ingreso, UTC_TIMESTAMP()) AS minutos
@@ -293,24 +288,23 @@ export const listarDentro = async (req, res) => {
        WHERE a.fecha_salida IS NULL AND (v.placa = ? OR v.propietario_documento = ?) ORDER BY a.fecha_ingreso`,
       [normalizarPlaca(q), q],
     );
-    if (!rows.length) return res.status(404).json({ error: MSG.NO_DENTRO });
-    res.json(
-      rows.map((r) => ({
-        id_acceso: r.id_acceso,
-        placa: r.placa,
-        propietario: r.propietario_nombre,
-        documento: r.propietario_documento,
-        tipo: r.tipo,
-        tipoCodigo: r.tipo_codigo,
-        celda: r.celda,
-        entrada: formatearFechaHora(r.fecha_ingreso),
-        salida: formatearFechaHora(r.ahora),
-        permanencia: formatearPermanencia(r.minutos),
-      })),
-    );
+    if (!rows.length) return responder(res, 404, MSG.VEHICULO_FUERA);
+    const data = rows.map((r) => ({
+      id_acceso: r.id_acceso,
+      placa: r.placa,
+      propietario: r.propietario_nombre,
+      documento: r.propietario_documento,
+      tipo: r.tipo,
+      tipoCodigo: r.tipo_codigo,
+      celda: r.celda,
+      entrada: formatearFechaHora(r.fecha_ingreso),
+      salida: formatearFechaHora(r.ahora),
+      permanencia: formatearPermanencia(r.minutos),
+    }));
+    return responder(res, 200, MSG.LISTADO("Vehículos dentro"), { data });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al buscar vehículos dentro" });
+    responder(res, 500, MSG.ERROR_INTERNO);
   }
 };
 
@@ -318,9 +312,9 @@ export const registrarReubicacion = (req, res) => {
   const idAcceso = Number(req.params.id_acceso);
   const idCelda = Number(req.body?.id_celda);
   if (!Number.isInteger(idAcceso) || idAcceso < 1)
-    return res.status(400).json({ error: "Acceso requerido" });
+    return responder(res, 422, "Acceso requerido");
   if (!Number.isInteger(idCelda) || idCelda < 1)
-    return res.status(400).json({ error: "Celda requerida" });
+    return responder(res, 422, "Celda requerida");
 
   return ejecutar(
     req,
@@ -329,7 +323,7 @@ export const registrarReubicacion = (req, res) => {
       if (!req.user?.id_usuario)
         throw new ErrorNegocio(
           401,
-          "Sesión requerida para registrar el movimiento",
+          MSG.TOKEN_REQUERIDO,
         );
       await liberarMantenimientosExpirados(conn);
 
@@ -352,7 +346,7 @@ export const registrarReubicacion = (req, res) => {
       );
       if (!celdas.length)
         throw new ErrorNegocio(
-          400,
+          422,
           "La celda no existe, no está habilitada o no es del tipo del vehículo",
         );
       const c = celdas[0];
@@ -361,7 +355,7 @@ export const registrarReubicacion = (req, res) => {
         `SELECT id_acceso FROM accesos_vehiculos WHERE id_celda = ? AND fecha_salida IS NULL LIMIT 1`,
         [c.id_celda],
       );
-      if (ocupada.length) throw new ErrorNegocio(409, MSG.CELDA_NO_DISPONIBLE);
+      if (ocupada.length) throw new ErrorNegocio(409, "La celda ya no está disponible");
 
       // Antes se llamaba operadorYTurno solo para obtener el id (creando turnos innecesarios).
       await conn.query(
@@ -382,6 +376,7 @@ export const registrarReubicacion = (req, res) => {
           celda_origen: acceso.celda_origen,
           celda: c.codigo,
           accion: "reubicacion",
+          mensaje: "Vehículo reubicado correctamente",
         },
       };
     },
@@ -406,9 +401,7 @@ export const listarAccesos = async (req, res) => {
     const hasta = String(req.query.fecha_hasta ?? "").trim();
     for (const f of [desde, hasta]) {
       if (f && !FECHA_ISO.test(f))
-        return res
-          .status(400)
-          .json({ error: "Las fechas deben tener formato AAAA-MM-DD" });
+        return responder(res, 422, "Las fechas deben tener formato AAAA-MM-DD");
     }
 
     const conds = [],
@@ -465,12 +458,10 @@ export const listarAccesos = async (req, res) => {
       `SELECT COUNT(*) AS total ${FROM}`,
       params,
     );
-    res.json({ rows, total: Number(total), page, limit });
+    return responder(res, 200, MSG.LISTADO("Historial de accesos"), { rows, total: Number(total), page, limit });
   } catch (err) {
     console.error(err);
-    res
-      .status(500)
-      .json({ error: "Error al consultar el historial de accesos" });
+    responder(res, 500, MSG.ERROR_INTERNO);
   }
 };
 

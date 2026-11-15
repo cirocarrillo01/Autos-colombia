@@ -1,7 +1,12 @@
-﻿import { test } from "node:test";
+﻿import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../src/config/db.js";
 import { buscarVehiculoPorPlaca } from "../src/controllers/vehiculoController.js";
+import { setupTestDB } from "./helpers/db.js";
+
+before(async () => {
+  await setupTestDB();
+});
 
 function mockReqRes(placa) {
   const req = { params: { placa } };

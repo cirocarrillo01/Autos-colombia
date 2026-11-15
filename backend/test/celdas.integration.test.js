@@ -101,7 +101,7 @@ test("CE-04: Límite de capacidad de carros (70) alcanzado devuelve 400", async 
   const res = mockRes();
   await crearCelda(req, res);
   assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
-  assert.match(String(res.body.error), /No se pueden crear/);
+  assert.match(String(res.body.error), /Límite operativo excedido|no se pueden procesar/);
   await guardarEvidencia("CE-04", { status: res.statusCode, body: res.body });
   await limpiarLetra("Y");
 });
@@ -120,20 +120,20 @@ test("CE-05a: Límite de capacidad de motos (10) al crear devuelve 400", async (
   const res = mockRes();
   await crearCelda(req, res);
   assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
-  assert.match(String(res.body.error), /No se pueden crear/);
+  assert.match(String(res.body.error), /Límite operativo excedido|no se pueden procesar/);
   await guardarEvidencia("CE-05a", { status: res.statusCode, body: res.body });
   await limpiarLetra("W");
 });
 
 test("CE-06: Código y tipo obligatorios (varias variantes)", async () => {
   const casos = [
-    { body: { numero: 5, id_tipo_vehiculo: 1 },            esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
-    { body: { letra: "T", id_tipo_vehiculo: 1 },           esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
-    { body: { letra: "T", numero: 5 },                     esperado: "Letra, numero y tipo de vehiculo son obligatorios" },
-    { body: { letra: "   ", numero: 5, id_tipo_vehiculo: 1 }, esperado: "El bloque debe ser una sola letra" },
-    { body: { letra: "T", numero: "   ", id_tipo_vehiculo: 1 }, esperado: "El numero de celda debe ser un entero mayor o igual a 1" },
-    { body: { letra: "T", numero: 5, id_tipo_vehiculo: "   " }, esperado: "Tipo de vehiculo invalido" },
-    { body: { letra: "T", numero: 5, id_tipo_vehiculo: 99999 }, esperado: "Tipo de vehiculo invalido" },
+    { body: { numero: 5, id_tipo_vehiculo: 1 },            esperado: "obligatorios" },
+    { body: { letra: "T", id_tipo_vehiculo: 1 },           esperado: "obligatorios" },
+    { body: { letra: "T", numero: 5 },                     esperado: "obligatorios" },
+    { body: { letra: "   ", numero: 5, id_tipo_vehiculo: 1 }, esperado: "incorrecto o inválido" },
+    { body: { letra: "T", numero: "   ", id_tipo_vehiculo: 1 }, esperado: "entero mayor o igual a 1" },
+    { body: { letra: "T", numero: 5, id_tipo_vehiculo: "   " }, esperado: "incorrecto o inválido" },
+    { body: { letra: "T", numero: 5, id_tipo_vehiculo: 99999 }, esperado: "incorrecto o inválido" },
   ];
   const resultados = [];
   for (const c of casos) {
@@ -174,7 +174,7 @@ test("CE-07: Filtrar por estado inválido devuelve 400", async () => {
   const res = mockRes();
   await listarCeldas(req, res);
   assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
-  assert.match(String(res.body.error), /estado inv/i);
+  assert.match(String(res.body.error), /incorrecto o inválido|inválido/i);
   await guardarEvidencia("CE-07", { status: res.statusCode, body: res.body });
 });
 
@@ -229,7 +229,7 @@ test("CE-05b: Cambiar tipo de celda a moto cuando límite de motos alcanzado dev
     const res = mockRes();
     await actualizarCelda(req, res);
     assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
-    assert.match(String(res.body.error), /capacidad maxima/);
+    assert.match(String(res.body.error), /Límite operativo excedido|no se pueden procesar/);
     await guardarEvidencia("CE-05b", { status: res.statusCode, body: res.body });
     await borrarCelda("V", 7001);
   } else {
@@ -238,7 +238,7 @@ test("CE-05b: Cambiar tipo de celda a moto cuando límite de motos alcanzado dev
     const res = mockRes();
     await actualizarCelda(req, res);
     assert.strictEqual(res.statusCode, 400, "Esperaba 400, obtuve " + res.statusCode + ": " + JSON.stringify(res.body));
-    assert.match(String(res.body.error), /capacidad maxima/);
+    assert.match(String(res.body.error), /Límite operativo excedido|no se pueden procesar/);
     await guardarEvidencia("CE-05b", { status: res.statusCode, body: res.body });
   }
   await limpiarLetra("W");

@@ -5,6 +5,7 @@ import * as userRepository from "../repositories/userRepository.js";
 import * as refreshTokenRepository from "../repositories/refreshTokenRepository.js";
 import * as revokedTokenRepository from "../repositories/revokedTokenRepository.js";
 import * as auditRepository from "../repositories/auditRepository.js";
+import { MSG } from "../utils/messages.js";
 
 export const MAX_INTENTOS_FALLIDOS = 5;
 export const VENTANA_INTENTOS_MINUTOS = 15;
@@ -34,7 +35,7 @@ export const login = async (req, { usuario_login, clave } = {}) => {
     .trim()
     .slice(0, 40);
   if (!login || !clave)
-    return { status: 400, error: "Usuario y clave son obligatorios" };
+    return { status: 422, error: "Usuario y clave son obligatorios" };
 
   const ip = obtenerIp(req);
   const intento = (exitoso) =>
@@ -165,7 +166,7 @@ export const registrar = async (datos, actor = null) => {
 
 export const restablecerClave = async ({ idUsuario, claveNueva, adminId }) => {
   const usuario = await userRepository.findById(idUsuario);
-  if (!usuario) return { status: 404, error: "Usuario no encontrado" };
+  if (!usuario) return { status: 404, error: MSG.NO_ENCONTRADO("Usuario") };
 
   await userRepository.cambiarClave(
     idUsuario,
@@ -190,11 +191,11 @@ export const restablecerClave = async ({ idUsuario, claveNueva, adminId }) => {
   };
 };
 
-/** Re-autenticación (step-up). Si `clave` falta devuelve 400 sin llamar a bcrypt con "undefined". */
+/** Re-autenticación (step-up). Si `clave` falta devuelve 422 sin llamar a bcrypt con "undefined". */
 export const verificarClaveUsuario = async ({ usuario_login, clave }) => {
-  if (!clave) return { status: 400, error: "La clave es obligatoria" };
+  if (!clave) return { status: 422, error: "La clave es obligatoria" };
   const usuario = await userRepository.findByLogin(usuario_login);
-  if (!usuario) return { status: 404, error: "Usuario no encontrado" };
+  if (!usuario) return { status: 404, error: MSG.NO_ENCONTRADO("Usuario") };
   if (!(await bcrypt.compare(String(clave), usuario.clave_hash)))
     return { status: 400, error: "La clave es incorrecta" };
   return { status: 200, body: { ok: true } };
@@ -229,7 +230,7 @@ export const logout = async ({ idUsuario, token }) => {
 };
 
 export const refresh = async ({ refresh_token }) => {
-  if (!refresh_token) return { status: 400, error: "Refresh token requerido" };
+  if (!refresh_token) return { status: 422, error: "Refresh token requerido" };
   const row = await refreshTokenRepository.validarRefreshToken(refresh_token);
   if (!row) return { status: 401, error: "Refresh token inválido o expirado" };
 

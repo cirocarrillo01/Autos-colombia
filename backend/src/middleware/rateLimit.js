@@ -1,6 +1,8 @@
 // Limitadores de peticiones. `esPolling` ahora solo exime lecturas (GET).
 import rateLimit from "express-rate-limit";
 import { env } from "../config/envLoader.js";
+import { responder } from "../utils/responseHelper.js";
+import { MSG } from "../utils/messages.js";
 
 const VENTANA = 15 * 60 * 1000;
 
@@ -18,7 +20,7 @@ export const esPolling = (req) =>
   );
 
 const mensaje = (texto) => (_req, res) =>
-  res.status(429).json({ error: texto });
+  responder(res, 429, texto);
 
 export const limitadorGlobal = rateLimit({
   windowMs: VENTANA,

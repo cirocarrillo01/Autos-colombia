@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../src/config/db.js";
 import {
@@ -8,7 +8,7 @@ import {
 } from "../src/controllers/movimientoController.js";
 import { setupTestDB } from "./helpers/db.js";
 
-test("setup: inicializar BD", async () => {
+before(async () => {
   await setupTestDB();
 });
 
@@ -41,9 +41,9 @@ test("movimiento: entrada y salida de un vehiculo", async () => {
     }
   }
 
-  // Obtener id de celda B-1
+  // Obtener id de celda B-01
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-1' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-01' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -86,7 +86,7 @@ test("movimiento: entrada duplicada devuelve 409 o 400", async () => {
   }
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-2' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-02' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -129,7 +129,7 @@ test("movimiento: entrada en celda ya ocupada devuelve 409", async () => {
   );
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-3' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-03' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -173,7 +173,7 @@ test("movimiento: entrada con mensualidad que aun no inicia devuelve 403", async
     );
 
     const [celdas] = await pool.query(
-      "SELECT id_celda FROM celdas WHERE codigo = 'B-4' LIMIT 1",
+      "SELECT id_celda FROM celdas WHERE codigo = 'B-04' LIMIT 1",
     );
     const idCelda = celdas[0].id_celda;
 
@@ -181,7 +181,7 @@ test("movimiento: entrada con mensualidad que aun no inicia devuelve 403", async
     const res = mockRes();
     await registrarEntrada(req, res);
     assert.equal(res.statusCode, 403);
-    assert.equal(res.body.error, "La mensualidad del vehículo aún no inicia");
+    assert.match(res.body.error, /aún no inicia|no inicia/i);
   } finally {
     // Restaurar CAR006 exactamente como estaba (sin fechas hardcodeadas)
     if (original) {
@@ -201,8 +201,8 @@ test("movimiento: GET /dentro por documento devuelve los 2 vehiculos del propiet
     "UPDATE accesos_vehiculos SET fecha_salida = UTC_TIMESTAMP() WHERE id_vehiculo IN (SELECT id_vehiculo FROM vehiculos WHERE placa IN ('CAR001','CAR002')) AND fecha_salida IS NULL",
   );
 
-  const [c1] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-5' LIMIT 1");
-  const [c2] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-6' LIMIT 1");
+  const [c1] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-05' LIMIT 1");
+  const [c2] = await pool.query("SELECT id_celda FROM celdas WHERE codigo = 'B-06' LIMIT 1");
 
   await registrarEntrada(
     { body: { placa: "CAR001", id_celda: c1[0].id_celda }, user: { id_usuario: 1 } },
@@ -217,9 +217,9 @@ test("movimiento: GET /dentro por documento devuelve los 2 vehiculos del propiet
   const res = mockRes();
   await listarDentro(req, res);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.length, 2);
-  assert.ok(res.body.some((r) => r.placa === "CAR001"));
-  assert.ok(res.body.some((r) => r.placa === "CAR002"));
+  assert.equal(res.body.data.length, 2);
+  assert.ok(res.body.data.some((r) => r.placa === "CAR001"));
+  assert.ok(res.body.data.some((r) => r.placa === "CAR002"));
 
   await pool.query(
     "UPDATE vehiculos SET propietario_documento = CASE placa WHEN 'CAR001' THEN '1000000001' ELSE '1000000002' END WHERE placa IN ('CAR001','CAR002')",
@@ -249,7 +249,7 @@ test("movimiento: salida de vehiculo que ya salio devuelve 400 y audita el recha
   );
 
   const [celdas] = await pool.query(
-    "SELECT id_celda FROM celdas WHERE codigo = 'B-7' LIMIT 1",
+    "SELECT id_celda FROM celdas WHERE codigo = 'B-07' LIMIT 1",
   );
   const idCelda = celdas[0].id_celda;
 
@@ -264,7 +264,7 @@ test("movimiento: salida de vehiculo que ya salio devuelve 400 y audita el recha
   const res2 = mockRes();
   await registrarSalida({ body: { placa: "CAR003" }, user: { id_usuario: 1 } }, res2);
   assert.equal(res2.statusCode, 400);
-  assert.equal(res2.body.error, "El vehículo no se encuentra en el parqueadero");
+  assert.match(String(res2.body.error), /Conflicto de estado: el vehículo no se encuentra/);
 
   const [audit] = await pool.query(
     "SELECT COUNT(*) AS n FROM audit_log WHERE accion = 'salida_rechazada' AND detalle LIKE ?",

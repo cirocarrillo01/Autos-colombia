@@ -336,19 +336,4 @@ CREATE INDEX IF NOT EXISTS ix_la_fecha ON login_attempts (fecha_intento);
 --   DELETE FROM audit_log WHERE fecha < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY);
 use autos_colombia;
 select * from usuarios;
-SELECT id_usuario,usuario_login, clave_hash, LENGTH(clave_hash) AS longitud
-FROM usuarios
-WHERE usuario_login = 'antonio2';
-
 CREATE DATABASE autos_colombia_test;
-
--- Conteo general
-SELECT COUNT(*) AS celdas_antes FROM celdas;
-
--- Estado de la celda de prueba (reemplaza 1 por el id real)
-SELECT id_celda, codigo, id_tipo_vehiculo, activa, en_mantenimiento, mantenimiento_hasta
-FROM celdas
-WHERE id_celda = 1;
-
--- Verifica que no exista la celda que intentarás crear
-SELECT COUNT(*) AS z998_antes FROM celdas WHERE letra = 'Z' AND numero = 998;

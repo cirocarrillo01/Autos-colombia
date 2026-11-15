@@ -1,6 +1,7 @@
 ﻿// Gestión de usuarios (RF1.5-1.7).
 import * as userRepository from "../repositories/userRepository.js";
 import { validarDatosUsuario } from "../middleware/validation.js";
+import { MSG } from "../utils/messages.js";
 
 const limpiar = ({ clave_hash, ...u }) => ({
   ...u,
@@ -16,14 +17,14 @@ export const obtenerUsuario = async (id) => {
   const u = await userRepository.findById(id);
   return u
     ? { status: 200, body: limpiar(u) }
-    : { status: 404, error: "Usuario no encontrado" };
+    : { status: 404, error: MSG.NO_ENCONTRADO("Usuario") };
 };
 
 export const editarUsuario = async (id, datos) => {
   const invalido = validarDatosUsuario(datos, { requiereClave: false });
-  if (invalido) return { status: 400, error: invalido };
+  if (invalido) return { status: 422, error: invalido };
   if (!(await userRepository.findById(id)))
-    return { status: 404, error: "Usuario no encontrado" };
+    return { status: 404, error: MSG.NO_ENCONTRADO("Usuario") };
 
   const dup = await userRepository.findDuplicate(
     {
@@ -37,16 +38,15 @@ export const editarUsuario = async (id, datos) => {
   if (dup)
     return {
       status: 409,
-      error:
-        "Ya existe otro usuario con ese documento, usuario de acceso o correo.",
+      error: MSG.DUPLICADO("Usuario (Documento/Login/Email)"),
     };
 
   if (!(await userRepository.actualizar(id, datos)))
-    return { status: 200, body: { mensaje: "No se realizaron cambios" } };
+    return { status: 200, body: { mensaje: "No se realizaron cambios en el perfil del usuario." } };
   return {
     status: 200,
     body: {
-      mensaje: "Usuario actualizado correctamente",
+      mensaje: MSG.ACTUALIZADO("Usuario"),
       usuario: limpiar(await userRepository.findById(id)),
     },
   };
@@ -54,14 +54,14 @@ export const editarUsuario = async (id, datos) => {
 
 export const cambiarEstadoUsuario = async (id, estado) => {
   if (!["activo", "inactivo"].includes(estado))
-    return { status: 400, error: "Estado inválido (activo | inactivo)" };
+    return { status: 422, error: MSG.FORMATO_INVALIDO("Estado (activo/inactivo)") };
   if (!(await userRepository.findById(id)))
-    return { status: 404, error: "Usuario no encontrado" };
+    return { status: 404, error: MSG.NO_ENCONTRADO("Usuario") };
   await userRepository.cambiarEstado(id, estado);
   return {
     status: 200,
     body: {
-      mensaje: `Usuario ${estado === "activo" ? "activado" : "desactivado"} correctamente`,
+      mensaje: `Estado del usuario modificado a '${estado}' exitosamente.`,
     },
   };
 };

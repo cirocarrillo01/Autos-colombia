@@ -34,7 +34,7 @@ export const clearTables = async () => {
 };
 
 /**
- * Inserta datos de prueba requeridos por el Plan de Pruebas.
+ * Inserta o actualiza datos de prueba requeridos por el Plan de Pruebas (idempotente).
  */
 export const seedTestDB = async () => {
   const connection = await mysql.createConnection(dbConfig);
@@ -43,7 +43,11 @@ export const seedTestDB = async () => {
     await connection.query(`
       INSERT INTO tipos_vehiculos (id_tipo_vehiculo, nombre, codigo, tarifa_mensual) VALUES 
       (1, 'Carro', 'carro', 100000), 
-      (2, 'Moto', 'moto', 50000);
+      (2, 'Moto', 'moto', 50000)
+      ON DUPLICATE KEY UPDATE 
+        nombre = VALUES(nombre), 
+        codigo = VALUES(codigo), 
+        tarifa_mensual = VALUES(tarifa_mensual);
     `);
 
     // 2. Usuarios de prueba (clave: 123456)
@@ -52,21 +56,36 @@ export const seedTestDB = async () => {
       (1, 'admin', '$2a$10$cgabXbsvaFBd/7o7qAye7.vVvlZMRksyIKY5MJSLSTDD6wnTZK7am', 'administrador', 'cc', '12345', 'Admin', 'Pruebas', 'activo'),
       (2, 'administrador', '$2a$10$cgabXbsvaFBd/7o7qAye7.vVvlZMRksyIKY5MJSLSTDD6wnTZK7am', 'administrador', 'cc', '12346', 'Admin', 'Dos', 'activo'),
       (3, 'operador', '$2a$10$cgabXbsvaFBd/7o7qAye7.vVvlZMRksyIKY5MJSLSTDD6wnTZK7am', 'operador', 'cc', '54321', 'Operador', 'Prueba', 'activo'),
-      (4, 'operador_prueba', '$2a$10$cgabXbsvaFBd/7o7qAye7.vVvlZMRksyIKY5MJSLSTDD6wnTZK7am', 'operador', 'cc', '54322', 'Operador', 'Prueba2', 'activo');
+      (4, 'operador_prueba', '$2a$10$cgabXbsvaFBd/7o7qAye7.vVvlZMRksyIKY5MJSLSTDD6wnTZK7am', 'operador', 'cc', '54322', 'Operador', 'Prueba2', 'activo')
+      ON DUPLICATE KEY UPDATE
+        clave_hash = VALUES(clave_hash),
+        rol = VALUES(rol),
+        tipo_documento = VALUES(tipo_documento),
+        documento = VALUES(documento),
+        nombres = VALUES(nombres),
+        apellidos = VALUES(apellidos),
+        estado = VALUES(estado);
     `);
 
     // 3. Puertas
     await connection.query(`
       INSERT INTO puertas (id_puerta, nombre, activa) VALUES 
       (1, 'P1', TRUE),
-      (2, 'P2', TRUE);
+      (2, 'P2', TRUE)
+      ON DUPLICATE KEY UPDATE
+        nombre = VALUES(nombre),
+        activa = VALUES(activa);
     `);
 
     // 4. Turnos
     await connection.query(`
       INSERT INTO turnos (id_turno, id_usuario, estado, base_inicial) VALUES 
       (1, 1, 'abierto', 0),
-      (2, 2, 'abierto', 0);
+      (2, 2, 'abierto', 0)
+      ON DUPLICATE KEY UPDATE
+        id_usuario = VALUES(id_usuario),
+        estado = VALUES(estado),
+        base_inicial = VALUES(base_inicial);
     `);
 
     // 5. Vehículos de prueba (IDs fijos para consistencia en tests)
@@ -77,7 +96,17 @@ export const seedTestDB = async () => {
       (3, 'MOT001', 2, 'Negro', '2022', 'CB125', 'Maria Gomez', 'cc', '54321', TRUE),
       (4, 'CAR001', 1, 'Blanco', '2020', 'Spark', 'Juan Perez', 'cc', '12345', TRUE),
       (5, 'CAR006', 1, 'Gris', '2021', 'Kwid', 'Juan Perez', 'cc', '12345', TRUE),
-      (6, 'CAR007', 1, 'Verde', '2020', 'Spark', 'Juan Perez', 'cc', '12345', TRUE);
+      (6, 'CAR007', 1, 'Verde', '2020', 'Spark', 'Juan Perez', 'cc', '12345', TRUE)
+      ON DUPLICATE KEY UPDATE
+        placa = VALUES(placa),
+        id_tipo_vehiculo = VALUES(id_tipo_vehiculo),
+        color = VALUES(color),
+        modelo = VALUES(modelo),
+        nombre_modelo = VALUES(nombre_modelo),
+        propietario_nombre = VALUES(propietario_nombre),
+        propietario_tipo_documento = VALUES(propietario_tipo_documento),
+        propietario_documento = VALUES(propietario_documento),
+        activo = VALUES(activo);
     `);
 
     // 6. Mensualidades de prueba
@@ -87,7 +116,14 @@ export const seedTestDB = async () => {
       (2, 2, 1, '2020-01-01', '2099-12-31', 100000, 'activa'),
       (3, 3, 1, '2020-01-01', '2099-12-31', 50000, 'activa'),
       (4, 4, 1, '2020-01-01', '2099-12-31', 100000, 'activa'),
-      (5, 5, 1, '2020-01-01', '2022-01-01', 100000, 'activa');
+      (5, 5, 1, '2020-01-01', '2022-01-01', 100000, 'activa')
+      ON DUPLICATE KEY UPDATE
+        id_vehiculo = VALUES(id_vehiculo),
+        id_usuario_registro = VALUES(id_usuario_registro),
+        fecha_inicio = VALUES(fecha_inicio),
+        fecha_fin = VALUES(fecha_fin),
+        valor = VALUES(valor),
+        estado = VALUES(estado);
     `);
 
     // 7. Celdas de prueba
@@ -103,7 +139,13 @@ export const seedTestDB = async () => {
       (8, 1, 'B', 8, TRUE, FALSE),
       (9, 1, 'B', 9, TRUE, FALSE),
       (10, 1, 'B', 10, TRUE, FALSE),
-      (11, 2, 'C', 1, TRUE, FALSE);
+      (11, 2, 'C', 1, TRUE, FALSE)
+      ON DUPLICATE KEY UPDATE
+        id_tipo_vehiculo = VALUES(id_tipo_vehiculo),
+        letra = VALUES(letra),
+        numero = VALUES(numero),
+        activa = VALUES(activa),
+        en_mantenimiento = VALUES(en_mantenimiento);
     `);
   } finally {
     await connection.end();

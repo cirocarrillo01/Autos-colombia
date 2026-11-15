@@ -114,13 +114,13 @@ export default function CeldasPage() {
    */
   const cargar = useCallback(async () => {
     try {
-      const [lista, b, r] = await Promise.all([
+      const [lista, bRes, r] = await Promise.all([
         listarCeldas({ ...filtros, page, limit: LIMITE }),
         celdasPorBloque(),
         resumenCeldas(),
       ]);
       setData(lista);
-      setBloques(b);
+      setBloques(bRes?.data ?? bRes);
       setResumen(r);
     } catch (e) {
       setMsg({ tipo: "error", texto: e.message });
@@ -131,7 +131,8 @@ export default function CeldasPage() {
 
   useEffect(() => {
     listarTiposVehiculo()
-      .then((t) => {
+      .then((r) => {
+        const t = r?.data ?? r;
         setTipos(t);
         setCrearModal((m) => ({
           ...m,
@@ -341,7 +342,8 @@ export default function CeldasPage() {
   const abrirSelectorReubicacion = async (celda) => {
     try {
       const tipoCodigo = celda.tipo_codigo ?? celda.tipo;
-      const disponibles = await obtenerCeldasDisponibles(tipoCodigo);
+      const r = await obtenerCeldasDisponibles(tipoCodigo);
+      const disponibles = r?.data ?? r;
       setCeldasDisponibles(disponibles);
       setCeldaDestino(null);
 

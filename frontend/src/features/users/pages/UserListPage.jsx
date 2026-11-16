@@ -75,10 +75,15 @@ export default function UserListPage() {
 
   usePolling(cargar, 60000);
 
-  const buscar = (e) => {
+  const buscar = async (e) => {
     e.preventDefault();
     setPage(1);
     setAplicados(filtros);
+    try {
+      setData(await listarUsuarios({ ...filtros, page: 1, limit: LIMITE }));
+    } catch (e) {
+      setMsg({ tipo: "error", texto: e.message });
+    }
   };
 
   /**

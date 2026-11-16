@@ -1,92 +1,109 @@
-# =============================================================================
-# Auto Colombia - .gitignore
-# =============================================================================
-
-# Dependencias
+# === Dependencias ===
 node_modules/
-package-lock.json
-docs
-documentacion
+# package-lock.json  ← NO ignorar
 
-# Entorno (no versionar secretos ni credenciales)
+# === Entorno ===
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
-# Builds y distribuciones
+# === Builds ===
 dist/
 build/
 .next/
 out/
 .turbo/
-
-# Vite
 .vite/
+.cache/
 
-# Logs
+# === Logs ===
 *.log
+*.pid
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Logs específicos del backend de este proyecto
-backend/server_out.log
-backend/server_err.log
-backend/server_test.log
+pnpm-debug.log*
 backend/server_test.err
-backend/srv.log
-backend/srv.err.log
 backend/pruebas_out.txt
-backend/seed_reset.txt
-backend/seed_run1.txt
-backend/seed_run2.txt
+backend/seed_*.txt
 backend/ver_borrar.txt
 backend/ver_tras_reset.txt
 
-# IDE y editores
-.vscode/
-.idea/
+# === IDE ===
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/*
 *.swp
 *.swo
 *~
+.history/
 
-# Sistema operativo
+# === SO ===
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Cobertura de pruebas
+# === Test / cobertura ===
 coverage/
 .nyc_output/
-frontend/coverage/
+**/test-results/
+**/playwright-report/
+**/blob-report/
+**/playwright/.cache/
+**/test-results/.last-run.json
+backend/docs/test-results/
+docs/test-results/
+junit.xml
+test-results.xml
+*.lcov
 
-# Resultados de Playwright
-frontend/test-results/
-frontend/playwright-report/
-frontend/blob-report/
-frontend/playwright/.cache/
+# === Playwright: estado de autenticación (¡CRÍTICO!) ===
+frontend/storageState.json
 
-# SonarQube
+# === Sonar ===
 .scannerwork/
 .sonar/
-# sonar-project.properties <- Es mejor mantenerlo si es la configuración del proyecto, pero ignoramos los reportes generados si los hubiera fuera de coverage
-
-# TypeScript (si se añade en el futuro)
+documentacion/
+docs/
+.puml/
+# === TypeScript ===
 *.tsbuildinfo
+.eslintcache
 
-# Scripts de utilidad (temporales o locales)
-*.mjs
-*.inc
-*.ps1
+# === Temporales / respaldos ===
+tmp/
+temp/
+*.bak
+*.orig
+*.rej
+*.tgz
+graphify-out/
+# === Datos / uploads ===
+*.sqlite
+*.sqlite3
+*.db
+uploads/
+backend/uploads/
+
+# === Obsidian (solo config local) ===
+docs/.obsidian/
+
+# === Generadores locales de tests ===
+backend/test/_gen_tests*.mjs
+
+# === Scripts locales específicos (NO usar *.mjs / *.inc / *.ps1) ===
 cambios_backend.mjs
 aplicar_vehiculo.mjs
 aplicar_movimiento.mjs
 verificar_documentos.mjs
+verificar_seed.mjs
 helper_vehiculo.inc
 generar-reporte.ps1
 generar-reporte-duo.ps1
-verificar_seed.mjs
-# Texto especifico de este proyecto
+
+# === Específicos del proyecto ===
 reporte.txt
-.puml/
+# .puml/  ← quitar si los .puml/*.txt son fuente de documentación que quieres versionar

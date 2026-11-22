@@ -107,3 +107,21 @@ generar-reporte-duo.ps1
 # === Específicos del proyecto ===
 reporte.txt
 # .puml/  ← quitar si los .puml/*.txt son fuente de documentación que quieres versionar
+
+# resto
+.github/
+.opencode/
+.vscode/
+.graphify-out/
+.graphify-out/cache/
+.tests/
+.specs/
+
+reporte-backend1.txt
+reporte-backend.txt
+reporte-frontend1.txt
+reporte-frontend.txt
+
+sonar-project.properties
+sonar-project.properties.example
+seed.spec.ts

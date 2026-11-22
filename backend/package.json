@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "seed2": "node src/seed/seed2.js",
     "seed": "node src/seed/seed.js",
     "seed:reset": "node src/seed/seed.js --reset",
     "seed:pruebas": "node src/seed/seedPruebas.js",

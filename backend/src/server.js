@@ -20,6 +20,7 @@ async function main() {
     const server = app.listen(env.PORT, () =>
       console.log(`Servidor en http://localhost:${env.PORT}/api`),
     );
+    app.use((req, res, next) => { console.log(req.method, req.url); next(); });
     const cerrar = () =>
       server.close(() => pool.end().then(() => process.exit(0)).catch((err) => { console.error("Error al cerrar el pool:", err.message); process.exit(1); }));
     process.on("SIGINT", cerrar);

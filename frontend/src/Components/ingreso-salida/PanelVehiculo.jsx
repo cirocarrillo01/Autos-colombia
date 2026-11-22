@@ -23,7 +23,7 @@ const formatoPesos = (valor) =>
  * @param {string} props.vehiculo.placa
  * @param {string} props.vehiculo.estado - "Dentro" | "Fuera"
  * @param {number} props.vehiculo.mensualidad
- * @param {string} props.vehiculo.estadoMensualidad - "Al día" | "En mora" | "Sin mensualidad"
+ * @param {string} props.vehiculo.estadoMensualidad - "Al día" | "Pendiente" | "Sin mensualidad"
  * @param {string} props.vehiculo.tipoCodigo - "carro" | "moto"
  * @param {string} props.vehiculo.nombreModelo
  * @param {string} props.vehiculo.modelo - año
@@ -31,7 +31,7 @@ const formatoPesos = (valor) =>
  * @param {string} props.vehiculo.usuario
  */
 export default function PanelVehiculo({ vehiculo }) {
-  const alDia = vehiculo.estadoMensualidad === "Al día";
+  const alDia = ["Al día", "Pendiente"].includes(vehiculo.estadoMensualidad);
   const nombreModelo = vehiculo.nombreModelo?.trim() ?? "";
   const anio = vehiculo.modelo?.trim() ?? "";
   const color = vehiculo.color?.trim() ?? "";

@@ -8,10 +8,10 @@ $rootPath = $PWD.Path
 $outputFile = Join-Path $rootPath "reporte.txt"
 
 # Carpetas a ignorar
-$excludeDirs = @('node_modules', '.git', 'dist', 'build', '.vite', 'coverage', '.next','documentacion')
+$excludeDirs = @('node_modules', '.git', 'dist', 'build', '.vite', 'coverage', '.next','canchaControl','.puml','test')
 
 # Archivos a ignorar (por nombre)
-$excludeFiles = @('.env', '.env.local', '.env.production', 'package-lock.json', 'yarn.lock', 'reporte.txt')
+$excludeFiles = @('.env', '.env.local', '.env.production', 'package-lock.json', 'yarn.lock', 'reporte.txt','README.md')
 
 # Extensiones a incluir (opcional: vacío = todas)
 $includeExtensions = @('.js', '.jsx', '.ts', '.tsx', '.json', '.css', '.html', '.md', '.env.example')

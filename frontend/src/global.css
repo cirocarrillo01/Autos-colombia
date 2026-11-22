@@ -1,0 +1,26 @@
+/* Toast Global System */
+.mn-toast {
+  position: fixed;
+  top: 80px; /* Cambiado de bottom a top */
+  right: 24px;
+  padding: 12px 20px;
+  border-radius: 6px;
+  border: 1px solid #22c55e;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  animation: mn-fade 4s forwards;
+  z-index: 2000;
+  cursor: pointer;
+}
+.mn-toast--success { border: 1px solid #22c55e; background: #dcfce7; color: #15803d; }
+.mn-toast--error { border: 1px solid #ef4444; background: #fee2e2; color: #b91c1c; }
+
+@keyframes mn-fade {
+  0% { opacity: 0; transform: translateY(-20px); }
+  10% { opacity: 1; transform: translateY(0); }
+  90% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-20px); visibility: hidden; }
+}

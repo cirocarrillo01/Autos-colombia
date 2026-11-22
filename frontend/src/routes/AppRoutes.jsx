@@ -10,7 +10,8 @@ import DashboardAdmin from "../pages/DashboardAdmin.jsx";
 import DashboardOperador from "../pages/DashboardOperador.jsx";
 import IngresoSalida from "../pages/IngresoSalida.jsx";
 import HistorialAccesos from "../pages/HistorialAccesos.jsx";
-import VistaVacia from "../pages/VistaVacia.jsx";
+import MensualidadesPage from "../Components/mensualidades/MensualidadesPage.jsx";
+import MensualidadDetallePage from "../Components/mensualidades/MensualidadDetallePage.jsx";
 import UserListPage from "../features/users/pages/UserListPage.jsx";
 import UserFormPage from "../features/users/pages/UserFormPage.jsx";
 import CeldasPage from "../features/celdas/pages/CeldasPage.jsx";
@@ -45,7 +46,22 @@ export default function AppRoutes() {
           />
           <Route path="vehiculo" element={<HistorialAccesos />} />
           <Route path="ingreso/salida" element={<IngresoSalida />} />
-          <Route path="mensualidad" element={<VistaVacia />} />
+          <Route
+            path="mensualidades"
+            element={
+              <ProtectedRoute roles={["administrador", "operador"]}>
+                <MensualidadesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="mensualidades/:placa"
+            element={
+              <ProtectedRoute roles={["administrador", "operador"]}>
+                <MensualidadDetallePage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="users"

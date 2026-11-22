@@ -25,7 +25,8 @@ $excludeDirs = @(
     '.vite',
     'coverage',
     '.next',
-    'documentacion'
+    'documentacion',
+    'tests','.puml','docs','migrations'
 )
 
 # Archivos a ignorar
@@ -37,7 +38,8 @@ $excludeFiles = @(
     'yarn.lock',
     'reporte.txt',
     'reporte-frontend.txt',
-    'reporte-backend.txt'
+    'reporte-backend.txt',
+    'README.md'
 )
 
 # Extensiones a incluir
@@ -159,13 +161,13 @@ function Generate-Report {
 Generate-Report `
     -projectPath $frontendPath `
     -projectName "FRONTEND" `
-    -outputName "reporte-frontend.txt"
+    -outputName "reporte-frontend1.txt"
 
 # GENERAR BACKEND
 Generate-Report `
     -projectPath $backendPath `
     -projectName "BACKEND" `
-    -outputName "reporte-backend.txt"
+    -outputName "reporte-backend1.txt"
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green

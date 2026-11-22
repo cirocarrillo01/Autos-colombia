@@ -13,6 +13,7 @@
     "start": "node src/server.js",
     "seed": "node src/seed/seed.js",
     "seed:reset": "node src/seed/seed.js --reset",
+    "seed:pruebas": "node src/seed/seedPruebas.js",
     "test": "$env:NODE_ENV='test'; $env:DB_NAME='autos_colombia_test'; node --test --test-force-exit test/**/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/**/*.test.js",
     "sonar": "sonar-scanner-npm"

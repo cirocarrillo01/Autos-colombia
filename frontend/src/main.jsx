@@ -7,6 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./features/auth/context/AuthContext.jsx";
 import "./App.css";
+import "./global.css";
 
 /**
  * Función principal que inicializa la aplicación React.

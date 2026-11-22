@@ -10,6 +10,7 @@ import movimientos from "./movimientos.js";
 
 import { responder } from "../utils/responseHelper.js";
 import { MSG } from "../utils/messages.js";
+import mensualidadesRoutes from "./mensualidades.js";
 
 const router = Router();
 
@@ -26,5 +27,5 @@ router.use("/users", userRoutes);
 router.use("/vehiculos", vehiculos);
 router.use("/celdas", celdas);
 router.use("/movimientos", movimientos);
-
+router.use("/mensualidades", mensualidadesRoutes);
 export default router;

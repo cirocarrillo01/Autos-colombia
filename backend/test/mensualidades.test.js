@@ -1,6 +1,6 @@
 ﻿import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { pool } from "../src/config/db.js";
+import { pool, query } from "../src/config/db.js";
 import { buscarVehiculoPorPlaca } from "../src/controllers/vehiculoController.js";
 import { setupTestDB } from "./helpers/db.js";
 
@@ -26,11 +26,11 @@ test("mensualidad: CAR001 esta al dia", async () => {
   assert.equal(res.body.estadoMensualidad, "Al día");
 });
 
-test("mensualidad: CAR006 esta en mora", async () => {
+test("mensualidad: CAR006 con mensualidad vencida queda sin mensualidad", async () => {
   const { req, res } = mockReqRes("CAR006");
   await buscarVehiculoPorPlaca(req, res);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.estadoMensualidad, "En mora");
+  assert.equal(res.body.estadoMensualidad, "Sin mensualidad");
 });
 
 test("mensualidad: CAR007 sin mensualidad", async () => {

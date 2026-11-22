@@ -56,7 +56,7 @@ router.get("/me", autenticar, me);
 router.post(
   "/verify-password",
   autenticar,
-  roleMiddleware.autorizarRoles("administrador"),
+  roleMiddleware.autorizarRoles("administrador", "operador"), // Permitir ambos
   verifyPassword,
 );
 

@@ -45,7 +45,7 @@ export const SidebarData = [
   {
     title: "Mensualidades",
     iconName: "calendar",
-    link: "/mensualidad",
+    link: "/mensualidades",
     roles: ROLES.TODOS,
   },
   // Ambos roles. En /celdas se resuelve admin vs operador.

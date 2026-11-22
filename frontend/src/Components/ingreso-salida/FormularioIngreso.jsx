@@ -15,8 +15,7 @@ import PanelVehiculo from "./PanelVehiculo.jsx";
 import PanelMovimiento from "./PanelMovimiento.jsx";
 import SelectorVehiculoDialog from "./SelectorVehiculoDialog.jsx";
 
-const MSG_SIN_CELDAS = "No hay celdas disponibles para este tipo de vehículo";
-const ESTADO_OK = "Al día";
+const ESTADOS_PERMITEN_INGRESO = ["Al día", "Pendiente"];
 
 export default function FormularioIngreso() {
   const [entrada, setEntrada] = useState("");
@@ -57,7 +56,7 @@ export default function FormularioIngreso() {
       }
 
       // Cualquier estado distinto de "Al día" bloquea el ingreso.
-      if (v.estadoMensualidad !== ESTADO_OK) {
+      if (!ESTADOS_PERMITEN_INGRESO.includes(v.estadoMensualidad)) {
         setAlerta({
           tipo: "ingreso-bloqueado",
           mensaje: `La placa ${v.placa} no puede ingresar. Mensualidad: ${v.estadoMensualidad}.`,

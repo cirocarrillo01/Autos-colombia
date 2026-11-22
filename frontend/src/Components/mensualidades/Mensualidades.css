@@ -1,0 +1,571 @@
+/* frontend/src/Components/mensualidades/Mensualidades.css */
+/* Sistema de estilos para mensualidades (basado en el diseño de referencia) */
+
+/* Página */
+.mn-page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mn-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mn-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #111827;
+}
+.mn-subtitle {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* Tarjetas de resumen */
+.mn-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.mn-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.mn-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mn-card-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.mn-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #fff;
+}
+.mn-card-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.9rem;
+}
+.mn-ok {
+  color: #16a34a;
+}
+.mn-err {
+  color: #dc2626;
+}
+.mn-warn {
+  color: #d97706;
+}
+.mn-neutral {
+  color: #6b7280;
+}
+.mn-card-progress {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.mn-bar {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mn-bar-fill {
+  height: 100%;
+  background: #1d4ed8;
+  transition: width 0.3s;
+}
+
+/* Filtros */
+.mn-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mn-filtros input,
+.mn-filtros select {
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+.mn-filtros input {
+  flex: 1 1 240px;
+}
+
+/* Botones */
+.mn-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  height: 30px; /* Igualar altura con botones de icono */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mn-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mn-btn--primary {
+  background: #1d4ed8;
+  color: #fff;
+}
+.mn-btn--ghost {
+  background: #fff;
+  border-color: #d1d5db;
+  color: #111;
+}
+.mn-btn--danger {
+  background: #dc2626;
+  color: #fff;
+}
+
+/* Botones de icono en tabla */
+.mn-icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #374151;
+  font-size: 14px;
+}
+.mn-icon-btn:hover {
+  background: #f9fafb;
+}
+.mn-icon-btn--danger {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+.mn-icon-btn--danger:hover {
+  background: #fef2f2;
+}
+
+/* Tabla */
+.mn-tabla-wrap {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: auto;
+}
+.mn-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.mn-tabla th,
+.mn-tabla td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+}
+.mn-tabla thead th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.mn-vacio {
+  text-align: center;
+  color: #9ca3af;
+  padding: 24px;
+}
+.mn-cap {
+  text-transform: capitalize;
+}
+.mn-acciones {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 32px; /* Forzar altura consistente */
+}
+
+.mn-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mn-badge--ok {
+  background: #dcfce7;
+  color: #166534;
+}
+.mn-badge--warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+.mn-badge--err {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.mn-badge--neutral {
+  background: #f3f4f6;
+  color: #374151;
+}
+.mn-badge--info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* Paginación */
+.mn-paginacion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.mn-page-btn {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #111;
+}
+.mn-page-btn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+.mn-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.mn-page-info {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* Alertas */
+.mn-alert {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  font-weight: 500;
+}
+.mn-alert--err {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.mn-alert--warn {
+  background: #fef3c7;
+  color: #92400e;
+  margin: 8px 0;
+}
+.mn-alert--success {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+/* Modales */
+.mn-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.mn-modal {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  width: min(460px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 90vh;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+.mn-modal--wide {
+  width: min(780px, 96vw);
+}
+.mn-modal h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  color: #111827;
+}
+.mn-modal-acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Campos de formulario */
+.mn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #374151;
+}
+.mn-field input,
+.mn-field select {
+  padding: 9px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+.mn-field input:focus,
+.mn-field select:focus {
+  outline: none;
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+}
+
+/* Fieldset (agrupación de campos) */
+.mn-fieldset-group {
+  margin-bottom: 16px;
+}
+.mn-fieldset-legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  padding: 0 8px;
+  margin-left: -4px;
+  margin-bottom: 6px;
+}
+.mn-fieldset {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 18px;
+}
+.mn-field--full {
+  grid-column: 1 / -1;
+}
+.mn-field--readonly input,
+.mn-field--readonly select {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+/* Detalle (info items) */
+.mn-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mn-info-label {
+  font-size: 0.7rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.mn-info-value {
+  font-size: 0.9rem;
+  color: #111827;
+}
+
+/* Historiales en detalle */
+.mn-historial-wrap {
+  grid-column: 1 / -1;
+  overflow-x: auto;
+}
+.mn-historial {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+.mn-historial th,
+.mn-historial td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+}
+.mn-historial th:nth-child(1),
+.mn-historial td:nth-child(1) {
+  width: 28%;
+}
+.mn-historial th:nth-child(2),
+.mn-historial td:nth-child(2) {
+  width: 28%;
+}
+.mn-historial th:nth-child(3),
+.mn-historial td:nth-child(3) {
+  width: 22%;
+}
+.mn-historial th:nth-child(4),
+.mn-historial td:nth-child(4) {
+  width: 22%;
+}
+.mn-historial thead th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+.mn-historial .mn-badge {
+  font-size: 0.7rem;
+}
+
+/* Etiqueta "DENTRO" */
+.mn-tag-dentro {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* Toast */
+.mn-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  animation: mn-fade 4s forwards;
+  z-index: 2000;
+}
+.mn-toast--success {
+  background: #16a34a;
+}
+.mn-toast--error {
+  background: #dc2626;
+}
+.mn-toast--warning {
+  background: #d97706;
+}
+@keyframes mn-fade {
+  0% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* Detalle modal — clases para reemplazar estilos inline */
+.mn-detail-section {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.mn-detail-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+}
+.mn-detail-card--gray {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+.mn-detail-grid {
+  display: grid;
+  gap: 10px 6px;
+}
+.mn-detail-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.mn-detail-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.mn-detail-row {
+  display: grid;
+  grid-template-columns: 28% 28% 22% 22%;
+  padding: 2px 0;
+  font-size: 13px;
+  align-items: center;
+}
+
+.mn-historial {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+.mn-historial th,
+.mn-historial td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+}
+.mn-detail-label {
+  color: #6b7280;
+  font-size: 11px;
+  display: block;
+}
+.mn-detail-value {
+  font-weight: 600;
+}
+
+.mn-modal-clave {
+  margin: 16px 0;
+  max-width: 460px;
+}
+.mn-modal-clave input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  box-sizing: border-box; /* shortcut: evita scrollbar o overflow por padding */
+}
+.mn-error {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #dc2626;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 0.8rem;
+  display: block;
+  margin-top: 8px;
+}

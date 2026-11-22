@@ -6,12 +6,15 @@
 -- Modelo de negocio:
 --   * Cobro únicamente por mensualidad. No existen tarifas por hora/día.
 --   * Cada ingreso elige una celda libre rotativa del mismo tipo del vehículo.
---   * Estado del cliente: pagado (mensualidad vigente) o en mora (vencida).
---     -> Es estado DERIVADO por fechas; no se almacena.
+--   * Estado del vehículo: "Al día" (mensualidad vigente), "Pendiente" (último
+--     día pagado) o "Sin mensualidad" (vencida / nunca pagó).
+--     -> Es estado DERIVADO por fechas (hora de Bogotá); no se almacena.
+--   * La aplicación NO cobra: no hay pasarela, métodos de pago ni edición de
+--     precios. El pago se hace por fuera y aquí solo se CONFIRMA que se recibió.
 --   * Roles del sistema: administrador y operador.
 --     Los clientes NO son usuarios; sus datos viven en vehiculos.*.
 --   * Tipos de vehículo: moto y carro (el CHECK lo garantiza).
---   * Todo cobro se registra dentro de un turno de caja abierto.
+--   * Toda confirmación de pago se registra dentro de un turno abierto del operador.
 --
 -- Mapa de tablas:
 --   usuarios            login admin/operador, operadores de acceso
@@ -19,12 +22,13 @@
 --   celdas              spots físicos (letra-número) tipificados
 --   puertas             entradas/salidas; una sola de noche
 --   vehiculos           placa + propietario + tipo
---   turnos              caja por operador; uno abierto a la vez
+--   turnos              turno por operador; uno abierto a la vez
 --   mensualidades       periodo contratado por vehículo
---   pagos               pago de una mensualidad, dentro de un turno
+--   pagos               confirmación de pago de una mensualidad (quién y cuándo)
 --   accesos_vehiculos   ingreso/salida del vehículo
 --   novedades           incidentes sobre un vehículo o acceso
 --   login_attempts      anti fuerza bruta
+--   audit_log / revoked_tokens / refresh_tokens   seguridad y auditoría
 -- ============================================================================
 CREATE DATABASE IF NOT EXISTS autos_colombia
   CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -134,7 +138,7 @@ CREATE TABLE vehiculos (
 ) ENGINE=InnoDB;
 
 
--- TURNOS de caja (uno abierto por operador)
+-- TURNOS (uno abierto por operador)
 
 CREATE TABLE turnos (
   id_turno             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -144,12 +148,6 @@ CREATE TABLE turnos (
   base_inicial         DECIMAL(12,2) NOT NULL DEFAULT 0,
   observacion_apertura VARCHAR(255),
   fecha_cierre         DATETIME NULL,
-  total_efectivo       DECIMAL(12,2) NULL,
-  total_transferencia  DECIMAL(12,2) NULL,
-  total_tarjeta        DECIMAL(12,2) NULL,
-  total_qr             DECIMAL(12,2) NULL,
-  total_general        DECIMAL(12,2) NULL,
-  diferencia           DECIMAL(12,2) NULL,
   observacion_cierre   VARCHAR(255),
   -- Un solo turno abierto por usuario (mismo patrón que el resto del esquema)
   usuario_abierto INT UNSIGNED GENERATED ALWAYS AS
@@ -162,14 +160,15 @@ CREATE TABLE turnos (
 
 
 -- MENSUALIDADES (periodo contratado por vehículo)
+-- 'activa' significa NO cancelada; la vigencia real se deriva de fecha_inicio/fecha_fin.
 
 CREATE TABLE mensualidades (
   id_mensualidad      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_vehiculo         INT UNSIGNED NOT NULL,
-  id_usuario_registro INT UNSIGNED NOT NULL,          -- quién la vendió
+  id_usuario_registro INT UNSIGNED NOT NULL,          -- quién confirmó el pago
   fecha_inicio        DATE NOT NULL,
   fecha_fin           DATE NOT NULL,
-  valor               DECIMAL(12,2) NOT NULL,          -- snapshot de tarifa
+  valor               DECIMAL(12,2) NOT NULL,          -- tarifa de referencia al confirmar (no se cobra aquí)
   estado              ENUM('activa','cancelada') NOT NULL DEFAULT 'activa',
   observaciones       VARCHAR(255),
   fecha_creacion      DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
@@ -184,29 +183,26 @@ CREATE TABLE mensualidades (
     REFERENCES usuarios(id_usuario)
 ) ENGINE=InnoDB;
 
--- PAGOS (cada abono/cancelación de una mensualidad, dentro de un turno)
+-- PAGOS (confirmación de que el pago de una mensualidad se recibió por fuera de la app)
 
 CREATE TABLE pagos (
   id_pago         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_mensualidad  INT UNSIGNED NOT NULL,
   id_turno        INT UNSIGNED NOT NULL,
-  id_usuario      INT UNSIGNED NOT NULL,
-  metodo_pago     ENUM('efectivo','transferencia','tarjeta','qr') NOT NULL,
-  monto           DECIMAL(12,2) NOT NULL,   -- aplicado al cobro (sin vuelto)
-  monto_recibido  DECIMAL(12,2) NOT NULL,   -- lo entregado por el cliente
-  referencia      VARCHAR(100),
+  id_usuario      INT UNSIGNED NOT NULL,    -- operador que confirmó el pago
+  monto           DECIMAL(12,2) NOT NULL,   -- valor de referencia (tarifa_mensual al confirmar)
   fecha_pago      DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   KEY ix_pago_mens  (id_mensualidad),
-  KEY ix_pago_turno (id_turno, metodo_pago),
+  KEY ix_pago_turno (id_turno),
   KEY ix_pago_fecha (fecha_pago),
-  CONSTRAINT chk_pago_montos CHECK (monto > 0 AND monto_recibido >= monto),
+  CONSTRAINT chk_pago_monto CHECK (monto > 0),
   CONSTRAINT fk_pago_mens  FOREIGN KEY (id_mensualidad) REFERENCES mensualidades(id_mensualidad),
   CONSTRAINT fk_pago_turno FOREIGN KEY (id_turno)       REFERENCES turnos(id_turno),
   CONSTRAINT fk_pago_usr   FOREIGN KEY (id_usuario)     REFERENCES usuarios(id_usuario)
 ) ENGINE=InnoDB;
 
 
--- ACCESOS (ingreso â†’ salida del vehículo; sin cobro, es solo bitácora)
+-- ACCESOS (ingreso -> salida del vehículo; sin cobro, es solo bitácora)
 
 CREATE TABLE accesos_vehiculos (
   id_acceso           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -231,6 +227,7 @@ CREATE TABLE accesos_vehiculos (
   KEY ix_acceso_vehiculo (id_vehiculo, fecha_ingreso),
   KEY ix_acceso_celda    (id_celda, fecha_ingreso),
   KEY ix_acceso_turno    (id_turno_ingreso),
+  KEY ix_acceso_fecha_ingreso (fecha_ingreso),
   CONSTRAINT chk_acceso_fechas CHECK (fecha_salida IS NULL OR fecha_salida >= fecha_ingreso),
   CONSTRAINT fk_acceso_vehiculo FOREIGN KEY (id_vehiculo)         REFERENCES vehiculos(id_vehiculo),
   CONSTRAINT fk_acceso_celda    FOREIGN KEY (id_celda)            REFERENCES celdas(id_celda),
@@ -272,7 +269,8 @@ CREATE TABLE login_attempts (
   ip_address    VARCHAR(45) NOT NULL,
   fecha_intento DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
   KEY ix_la_usuario (usuario_login, fecha_intento),
-  KEY ix_la_ip      (ip_address, fecha_intento)
+  KEY ix_la_ip      (ip_address, fecha_intento),
+  KEY ix_la_fecha   (fecha_intento)
 ) ENGINE=InnoDB;
 
 
@@ -316,9 +314,8 @@ CREATE TABLE refresh_tokens (
 ) ENGINE=InnoDB;
 
 
--- ÍNDICES ADICIONALES PARA RENDIMIENTO Y MANTENIMIENTO
-CREATE INDEX IF NOT EXISTS ix_acceso_fecha_ingreso ON accesos_vehiculos (fecha_ingreso);
-CREATE INDEX IF NOT EXISTS ix_la_fecha ON login_attempts (fecha_intento);
+-- Los índices ix_acceso_fecha_ingreso e ix_la_fecha ya están en sus tablas
+-- (MySQL no soporta CREATE INDEX IF NOT EXISTS).
 
 -- EVENTO PROGRAMADO DE PURGA (requiere event_scheduler = ON en el servidor MySQL)
 -- Borra registros antiguos de login_attempts y audit_log (más de 90 días).
@@ -334,6 +331,8 @@ CREATE INDEX IF NOT EXISTS ix_la_fecha ON login_attempts (fecha_intento);
 -- ON SCHEDULE EVERY 24 HOUR
 -- DO
 --   DELETE FROM audit_log WHERE fecha < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY);
-use autos_colombia;
-select * from usuarios;
-CREATE DATABASE autos_colombia_test;
+-- Base de datos de pruebas (usada por npm test)
+CREATE DATABASE IF NOT EXISTS autos_colombia_test
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+-- Para crear el mismo esquema en la BD de pruebas, importe este script
+-- cambiando "autos_colombia" por "autos_colombia_test" en CREATE DATABASE y USE.

@@ -2,10 +2,12 @@
 import { pool } from "../config/db.js";
 import { validarPlaca, normalizarPlaca } from "../validators/placa.js";
 import {
-  SQL_ULTIMA_MENSUALIDAD,
-  estadoMensualidad,
   ESTADO_MENSUALIDAD,
   MENSAJE_BLOQUEO,
+  estadoEfectivo,
+  puedeIngresar,
+  hoyBogota,
+  aYMD,
 } from "../utils/mensualidad.js";
 import { liberarMantenimientosExpirados } from "../utils/celdas.js";
 import {
@@ -32,24 +34,16 @@ async function puertaActiva(conn) {
   return rows[0].id_puerta;
 }
 
-/** Turno abierto del usuario (lo crea si no existe). */
+import { getOrCreateTurno } from "../utils/turno.js";
+
 async function operadorYTurno(conn, idUsuario) {
   if (!idUsuario)
     throw new ErrorNegocio(
       401,
       MSG.TOKEN_REQUERIDO,
     );
-  const [turnos] = await conn.query(
-    `SELECT id_turno FROM turnos WHERE id_usuario = ? AND estado = 'abierto' LIMIT 1`,
-    [idUsuario],
-  );
-  if (turnos.length)
-    return { idOperador: idUsuario, idTurno: turnos[0].id_turno };
-  const [r] = await conn.query(
-    `INSERT INTO turnos (id_usuario, estado, base_inicial) VALUES (?, 'abierto', 0)`,
-    [idUsuario],
-  );
-  return { idOperador: idUsuario, idTurno: r.insertId };
+  const idTurno = await getOrCreateTurno(conn, idUsuario);
+  return { idOperador: idUsuario, idTurno };
 }
 
 const SQL_AUDIT = `INSERT INTO audit_log (id_usuario, usuario_login, accion, recurso, detalle, ip_address) VALUES (?, ?, ?, 'accesos_vehiculos', ?, ?)`;
@@ -151,13 +145,16 @@ export const registrarEntrada = (req, res) => {
 
       await liberarMantenimientosExpirados(conn);
 
-      // Distingue sin mensualidad / pendiente / en mora (antes "aún no inicia" respondía "en mora").
-      const [filaMens] = await conn.query(SQL_ULTIMA_MENSUALIDAD, [
-        v.id_vehiculo,
-      ]);
-      const estadoM = estadoMensualidad(filaMens[0]);
-      if (estadoM !== ESTADO_MENSUALIDAD.AL_DIA)
-        throw new ErrorNegocio(403, MENSAJE_BLOQUEO[estadoM]);
+      // Consultar todas las mensualidades del vehículo para obtener el estado efectivo
+      const [mensualidades] = await conn.query(
+        `SELECT id_mensualidad, fecha_inicio, fecha_fin, estado
+         FROM mensualidades
+         WHERE id_vehiculo = ? AND estado <> 'cancelada'`,
+        [v.id_vehiculo],
+      );
+      const { estado: estadoM } = estadoEfectivo(mensualidades, hoyBogota());
+      if (!puedeIngresar(estadoM))
+        throw new ErrorNegocio(403, MENSAJE_BLOQUEO[estadoM] ?? "Vehículo sin mensualidad válida");
 
       const [celdas] = await conn.query(
         `SELECT id_celda, codigo, id_tipo_vehiculo FROM celdas WHERE id_celda = ? AND activa = TRUE AND en_mantenimiento = FALSE LIMIT 1 FOR UPDATE`,

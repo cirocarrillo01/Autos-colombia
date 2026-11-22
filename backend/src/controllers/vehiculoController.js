@@ -2,8 +2,9 @@
 import { query } from "../config/db.js";
 import { validarPlaca } from "../validators/placa.js";
 import {
-  SQL_ULTIMA_MENSUALIDAD,
-  estadoMensualidad,
+  estadoEfectivo,
+  aYMD,
+  hoyBogota,
 } from "../utils/mensualidad.js";
 import { paginar, likeSeguro } from "../utils/consultas.js";
 import { aBooleano } from "../utils/errores.js";
@@ -25,10 +26,14 @@ const dentro = async (idVehiculo) =>
   )[0];
 
 async function armarRespuestaVehiculo(v) {
-  const [acceso, [mens]] = await Promise.all([
-    dentro(v.id_vehiculo),
-    query(SQL_ULTIMA_MENSUALIDAD, [v.id_vehiculo]).then((r) => [r[0]]),
-  ]);
+  const acceso = await dentro(v.id_vehiculo);
+  const mensualidades = await query(
+    `SELECT id_mensualidad, fecha_inicio, fecha_fin, estado
+     FROM mensualidades
+     WHERE id_vehiculo = ? AND estado <> 'cancelada'`,
+    [v.id_vehiculo],
+  );
+  const { estado: estadoMensualidad } = estadoEfectivo(mensualidades, hoyBogota());
   return {
     id: v.id_vehiculo,
     placa: v.placa,
@@ -41,7 +46,7 @@ async function armarRespuestaVehiculo(v) {
     color: v.color ?? "",
     usuario: v.propietario_nombre,
     documento: v.propietario_documento,
-    estadoMensualidad: estadoMensualidad(mens),
+    estadoMensualidad,
   };
 }
 
@@ -60,6 +65,21 @@ export const buscarVehiculoPorPlaca = async (req, res) => {
     );
     if (!v) return responder(res, 404, MSG.NO_ENCONTRADO("Vehículo"));
     return responder(res, 200, MSG.ENCONTRADO("Vehículo"), await armarRespuestaVehiculo(v));
+  } catch (err) {
+    error500(res, err);
+  }
+};
+
+export const obtenerVehiculoRaw = async (req, res) => {
+  try {
+    const f = validarPlaca(req.params.placa);
+    if (!f.valida) return responder(res, 422, f.error);
+    const [v] = await query(
+      `SELECT * FROM vehiculos WHERE placa = ? LIMIT 1`,
+      [f.placa],
+    );
+    if (!v) return responder(res, 404, MSG.NO_ENCONTRADO("Vehículo"));
+    return responder(res, 200, MSG.ENCONTRADO("Vehículo"), v);
   } catch (err) {
     error500(res, err);
   }
@@ -144,6 +164,11 @@ export const crearVehiculo = async (req, res) => {
     if (!VALID_TIPOS_DOCUMENTO.includes(tipoDoc))
       return responder(res, 422, "Tipo de documento del propietario inválido");
 
+    const anio = Number(b.modelo);
+    const anioActual = new Date().getFullYear();
+    if (!anio || anio < 1930 || anio > anioActual)
+      return responder(res, 422, `El año debe estar entre 1930 y ${anioActual}.`);
+
     const [tipo] = await query(
       `SELECT id_tipo_vehiculo, codigo FROM tipos_vehiculos WHERE id_tipo_vehiculo = ?`,
       [b.id_tipo_vehiculo],
@@ -209,6 +234,12 @@ export const actualizarVehiculo = async (req, res) => {
     ) {
       return responder(res, 422, "Tipo de documento del propietario inválido");
     }
+    if (b.modelo !== undefined) {
+      const anio = Number(b.modelo);
+      const anioActual = new Date().getFullYear();
+      if (!anio || anio < 1930 || anio > anioActual)
+        return responder(res, 422, `El año debe estar entre 1930 y ${anioActual}.`);
+    }
     const sets = [],
       params = [];
     for (const c of CAMPOS_EDITABLES)
@@ -255,22 +286,12 @@ export const cambiarEstadoVehiculo = async (req, res) => {
   }
 };
 
-const gone = (mensaje) => (_req, res) =>
-  responder(res, 410, mensaje);
-export const asignarCeldaFija = gone(
-  "La asignación de celdas fijas ya no está disponible.",
-);
-export const liberarCeldaFija = gone(
-  "La liberación de celdas fijas ya no está disponible.",
-);
-
 export default {
   buscarVehiculoPorPlaca,
+  obtenerVehiculoRaw,
   buscarVehiculosPorDocumento,
   listarVehiculos,
   crearVehiculo,
   actualizarVehiculo,
   cambiarEstadoVehiculo,
-  asignarCeldaFija,
-  liberarCeldaFija,
 };

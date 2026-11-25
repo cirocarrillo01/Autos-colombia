@@ -15,6 +15,13 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* Scroll horizontal para tablas */
+.mn-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .mn-header h1 {
   margin: 0;
   font-size: 1.5rem;
@@ -330,9 +337,38 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .mn-modal-acciones {
+    justify-content: stretch;
+  }
+  .mn-modal-acciones .mn-btn {
+    flex: 1;
+    min-width: 120px;
+  }
 }
 
 /* Campos de formulario */
+/* Ajustes para formularios en modales - Responsividad total */
+.mn-fieldset--responsive {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.mn-modal {
+  max-width: 95vw !important;
+  max-height: 90vh;
+  margin: 10px;
+}
+
+/* Forzar inputs y selects a ocupar el 100% de su celda */
+.mn-field input,
+.mn-field select {
+  width: 100%;
+  box-sizing: border-box;
+}
 .mn-field {
   display: flex;
   flex-direction: column;
@@ -492,6 +528,10 @@
 
 /* Detalle modal — clases para reemplazar estilos inline */
 .mn-detail-section {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin: 12px 0 6px;
   font-size: 11px;
   font-weight: 600;
@@ -499,11 +539,45 @@
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.mn-detail-section::after {
+  content: "▼";
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+@media (max-width: 640px) {
+  .mn-detail-section::after {
+    transform: rotate(-90deg);
+  }
+  .mn-detail-section.open::after {
+    transform: rotate(0deg);
+  }
+  .mn-detail-section + .mn-detail-card,
+  .mn-detail-section + .mn-historial-wrap,
+  .mn-detail-section + div + .mn-detail-card,
+  .mn-detail-section + div + .mn-historial-wrap {
+    display: none;
+  }
+  .mn-detail-section.open + .mn-detail-card,
+  .mn-detail-section.open + .mn-historial-wrap,
+  .mn-detail-section.open + div + .mn-detail-card,
+  .mn-detail-section.open + div + .mn-historial-wrap {
+    display: block;
+  }
+}
+/* Tarjetas de detalle estilo Ingreso/Salida */
 .mn-detail-card {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px;
+  border-radius: 8px;
+  padding: 16px;
+  box-sizing: border-box;
+  width: 100%;
+}
+@media (max-width: 640px) {
+  .mn-detail-grid-3,
+  .mn-detail-grid-4 {
+    grid-template-columns: 1fr !important;
+  }
 }
 .mn-detail-card--gray {
   background: #f9fafb;
@@ -525,6 +599,18 @@
   padding: 2px 0;
   font-size: 13px;
   align-items: center;
+}
+
+/* Responsivo: tarjetas de detalle a 1 columna en móviles */
+@media (max-width: 640px) {
+  .mn-detail-grid-3,
+  .mn-detail-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .mn-detail-row {
+    grid-template-columns: 1fr;
+    gap: 4px 0;
+  }
 }
 
 .mn-historial {

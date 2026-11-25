@@ -109,14 +109,14 @@ export default function RegistroVehiculoModal({
         <div className="mn-fieldset-group">
           <legend className="mn-fieldset-legend">Vehículo</legend>
           <div
-            className="mn-fieldset"
-            style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+            className="mn-fieldset mn-fieldset--responsive"
           >
             <label className="mn-field">
               Placa *
               <input
                 required
                 disabled={!!vehiculoEdicion}
+                value={form.placa}
                 onChange={(e) =>
                   setForm({ ...form, placa: e.target.value.toUpperCase() })
                 }
@@ -184,8 +184,7 @@ export default function RegistroVehiculoModal({
         <div className="mn-fieldset-group">
           <legend className="mn-fieldset-legend">Propietario</legend>
           <div
-            className="mn-fieldset"
-            style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+            className="mn-fieldset mn-fieldset--responsive"
           >
             <label className="mn-field">
               Tipo Doc

@@ -20,6 +20,7 @@ const COLS = [
 export default function ResumenCeldas({ resumen }) {
   if (!resumen) return null;
   const { totales, porTipo } = resumen;
+  const COLS = [["total", "Total"], ["libres", "Libres"], ["ocupadas", "Ocupadas"], ["no_disponibles", "No disponibles"]];
   return (
     <>
       <div className="Cards-row">

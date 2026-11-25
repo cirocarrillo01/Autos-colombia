@@ -312,8 +312,14 @@ export const listarMensualidades = async (req, res) => {
       });
     }
 
-    const prioridad = (d) => (d.puede_renovar ? 1 : d.estado === AL_DIA ? 2 : 3);
-    data.sort((a, b) => prioridad(a) - prioridad(b) || a.placa.localeCompare(b.placa));
+    // Ordenar: 1. Puede renovar (Pendiente/Vence pronto), 2. Al día, 3. Otros.
+    // Dentro de cada grupo, ordenar por fecha de vencimiento ascendente (más próximo primero).
+    const prioridad = (d) => (d.puede_renovar ? 1 : d.estado === ESTADO_MENSUALIDAD.AL_DIA ? 2 : 3);
+    data.sort((a, b) => 
+      prioridad(a) - prioridad(b) || 
+      (a.dias_para_vencer ?? 999) - (b.dias_para_vencer ?? 999) || 
+      a.placa.localeCompare(b.placa)
+    );
 
     let total;
     if (estado) {

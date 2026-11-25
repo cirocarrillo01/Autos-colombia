@@ -15,6 +15,17 @@
   z-index: 2000;
   cursor: pointer;
 }
+
+/* Toast responsivo en móviles */
+@media (max-width: 480px) {
+  .mn-toast {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 24px;
+    text-align: center;
+  }
+}
 .mn-toast--success { border: 1px solid #22c55e; background: #dcfce7; color: #15803d; }
 .mn-toast--error { border: 1px solid #ef4444; background: #fee2e2; color: #b91c1c; }
 

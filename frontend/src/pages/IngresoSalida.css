@@ -11,6 +11,15 @@
   align-items: start;
 }
 
+/* Responsivo: apilar formularios en móviles */
+@media (max-width: 768px) {
+  .FormulariosConsulta {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
+}
+
 /* Cada tarjeta es hija DIRECTA del contenedor (no anidar una dentro de la otra) */
 .FormulariosConsulta > .Consulta-card {
   min-width: 0;
@@ -88,6 +97,20 @@
 .Consulta-acciones {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .Consulta-acciones {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .Consulta-acciones .Consulta-btn-ingresar,
+  .Consulta-acciones .Consulta-btn-salir,
+  .Consulta-acciones .Consulta-btn-limpiar {
+    width: 100%;
+    flex: none;
+  }
 }
 
 .Consulta-btn-ingresar {

@@ -19,18 +19,27 @@
 
 .Cards-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .Cards-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .Stat {
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  padding: 14px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
 }
 .Stat-valor {
   font-size: 1.6rem;
@@ -140,6 +149,33 @@
 }
 .Btn--ghost:hover:not(:disabled) {
   background: #f0f0f0;
+}
+
+/* Botones responsivos: en móvil apilan y ocupan ancho completo */
+@media (max-width: 480px) {
+  .Btn, .Btn--primary, .Btn--danger, .Btn--success, .Btn--ghost {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  .Toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .Toolbar .Btn, .Toolbar .Btn--sm {
+    width: 100%;
+  }
+  .Paginacion {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+  .Paginacion .Btn {
+    flex: 1 1 auto;
+    min-width: 80px;
+  }
 }
 
 .Tabla-wrap {
@@ -366,7 +402,7 @@
   }
 
   .Cards-row {
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .Paginacion {

@@ -198,17 +198,19 @@ export default function MensualidadesPage() {
       {cargando ? (
         <p style={{ color: "#6b7280" }}>Cargando…</p>
       ) : (
-        <TablaMensualidades
-          rows={data.rows}
-          puedeEscribir={puedeEscribir}
-          onPagar={(r) => setPlacaPago(r.placa)}
-          onCancelar={confirmarCancelar}
-          onEliminar={confirmarEliminar}
-          onDetalle={(r) => setDetallePlaca(r.placa)}
-          onEditar={(r) => {
-            obtenerVehiculoRaw(r.placa).then((v) => setVehiculoEdicion(v));
-          }}
-        />
+        <div className="mn-table-wrap">
+          <TablaMensualidades
+            rows={data.rows}
+            puedeEscribir={puedeEscribir}
+            onPagar={(r) => setPlacaPago(r.placa)}
+            onCancelar={confirmarCancelar}
+            onEliminar={confirmarEliminar}
+            onDetalle={(r) => setDetallePlaca(r.placa)}
+            onEditar={(r) => {
+              obtenerVehiculoRaw(r.placa).then((v) => setVehiculoEdicion(v));
+            }}
+          />
+        </div>
       )}
 
       <div className="Paginacion">

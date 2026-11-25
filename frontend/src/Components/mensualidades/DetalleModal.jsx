@@ -28,6 +28,7 @@ export default function DetalleModal({ placa, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
   const [cargando, setCargando] = useState(true);
+  const [openSections, setOpenSections] = useState({});
 
   useEffect(() => {
     let vivo = true;
@@ -39,6 +40,10 @@ export default function DetalleModal({ placa, onClose }) {
       .finally(() => vivo && setCargando(false));
     return () => { vivo = false; };
   }, [placa]);
+
+  const toggleSection = (key) => {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   if (cargando) {
     return (
@@ -88,7 +93,7 @@ export default function DetalleModal({ placa, onClose }) {
       <div className="mn-modal mn-modal--wide" onClick={(e) => e.stopPropagation()}>
         <h3>Detalle · {v.placa}</h3>
 
-                <div className="mn-detail-section">Vehículo</div>
+                <div className={`mn-detail-section ${openSections.vehiculo ? 'open' : ''}`} onClick={() => toggleSection('vehiculo')}>Vehículo</div>
         <div className="mn-detail-card mn-detail-grid mn-detail-grid-4">
           <InfoItem label="Tipo" value={v.tipo} />
           <InfoItem label="Propietario" value={v.propietario ?? "—"} />
@@ -103,7 +108,7 @@ export default function DetalleModal({ placa, onClose }) {
           <InfoItem label="Estado" value={<span className={`mn-badge ${estadoClass(v.estado)}`}>{v.estado}</span>} />
         </div>
 
-        <div className="mn-detail-section">Mensualidad actual</div>
+        <div className={`mn-detail-section ${openSections.mensualidad ? 'open' : ''}`} onClick={() => toggleSection('mensualidad')}>Mensualidad actual</div>
         <div className="mn-detail-card mn-detail-card--gray">
           {d.mensualidad_actual ? (
             <div className="mn-detail-row">
@@ -119,14 +124,14 @@ export default function DetalleModal({ placa, onClose }) {
 
         {d.proximo_periodo && (
           <>
-            <div className="mn-detail-section">Próximo periodo (ya pagado)</div>
+            <div className={`mn-detail-section ${openSections.proximo ? 'open' : ''}`} onClick={() => toggleSection('proximo')}>Próximo periodo (ya pagado)</div>
             <div className="mn-detail-card mn-detail-card--gray">
               {fecha(d.proximo_periodo.fecha_inicio)} → {fecha(d.proximo_periodo.fecha_fin)} · {money(d.proximo_periodo.valor)}
             </div>
           </>
         )}
 
-        <div className="mn-detail-section">Historial de pagos</div>
+        <div className={`mn-detail-section ${openSections.pagos ? 'open' : ''}`} onClick={() => toggleSection('pagos')}>Historial de pagos</div>
         <div className="mn-historial-wrap" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6 }}>
           <table className="mn-historial">
             <thead>
@@ -148,7 +153,7 @@ export default function DetalleModal({ placa, onClose }) {
           </table>
         </div>
 
-        <div className="mn-detail-section">Historial de mensualidades</div>
+        <div className={`mn-detail-section ${openSections.mensualidades ? 'open' : ''}`} onClick={() => toggleSection('mensualidades')}>Historial de mensualidades</div>
         <div className="mn-historial-wrap" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6 }}>
           <table className="mn-historial">
             <thead>
